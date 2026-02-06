@@ -9,11 +9,11 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
 {
     private class Entry
     {
-        public Fingerprint Fingerprint { get; set; }
-        public IdempotencyEntryState State { get; set; }
-        public DateTimeOffset LeaseUntilUtc { get; set; }
-        public DateTimeOffset ExpiresAtUtc { get; set; }
-        public IdempotencyResponseSnapshot? Snapshot { get; set; }
+        public Fingerprint Fingerprint { get; init; }
+        public IdempotencyEntryState State { get; init; }
+        public DateTimeOffset LeaseUntilUtc { get; init; }
+        public DateTimeOffset ExpiresAtUtc { get; init; }
+        public IdempotencyResponseSnapshot? Snapshot { get; init; }
     }
 
     private readonly ConcurrentDictionary<IdempotencyKeyType, Entry> _store = new();
