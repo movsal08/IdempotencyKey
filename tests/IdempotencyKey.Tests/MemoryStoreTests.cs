@@ -128,23 +128,24 @@ public class MemoryStoreTests : IDisposable
         var tasks = new List<Task<TryBeginResult>>();
         int count = 50;
 
-        var barrier = new Barrier(count);
-
-        for (int i = 0; i < count; i++)
+        using (var barrier = new Barrier(count))
         {
-            tasks.Add(Task.Run(async () =>
+            for (int i = 0; i < count; i++)
             {
-                barrier.SignalAndWait();
-                return await _store.TryBeginAsync(_key, _fingerprint, _policy, CancellationToken.None);
-            }));
+                tasks.Add(Task.Run(async () =>
+                {
+                    barrier.SignalAndWait();
+                    return await _store.TryBeginAsync(_key, _fingerprint, _policy, CancellationToken.None);
+                }));
+            }
+
+            var results = await Task.WhenAll(tasks);
+
+            var acquired = results.Count(r => r.Outcome == TryBeginOutcome.Acquired);
+            var inFlight = results.Count(r => r.Outcome == TryBeginOutcome.InFlight);
+
+            Assert.Equal(1, acquired);
+            Assert.Equal(count - 1, inFlight);
         }
-
-        var results = await Task.WhenAll(tasks);
-
-        var acquired = results.Count(r => r.Outcome == TryBeginOutcome.Acquired);
-        var inFlight = results.Count(r => r.Outcome == TryBeginOutcome.InFlight);
-
-        Assert.Equal(1, acquired);
-        Assert.Equal(count - 1, inFlight);
     }
 }
