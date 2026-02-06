@@ -24,4 +24,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IdempotencyKey.Core\IdempotencyKey.Core.csproj" />
+    <ProjectReference Include="..\..\src\IdempotencyKey.Store.Memory\IdempotencyKey.Store.Memory.csproj" />
+  </ItemGroup>
+
 </Project>
