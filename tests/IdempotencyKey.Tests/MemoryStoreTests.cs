@@ -6,7 +6,7 @@ using IdempotencyKeyType = IdempotencyKey.Core.IdempotencyKey;
 
 namespace IdempotencyKey.Tests;
 
-public class MemoryStoreTests
+public class MemoryStoreTests : IDisposable
 {
     private readonly MemoryIdempotencyStore _store;
     private readonly IdempotencyKeyType _key;
@@ -23,6 +23,11 @@ public class MemoryStoreTests
             LeaseDuration = TimeSpan.FromSeconds(2),
             Ttl = TimeSpan.FromHours(1)
         };
+    }
+
+    public void Dispose()
+    {
+        _store.Dispose();
     }
 
     [Fact]
@@ -54,7 +59,7 @@ public class MemoryStoreTests
     }
 
     [Fact]
-    public async Task CompleteAsync_MakesItAlreadyCompleted()
+    public async Task CompleteAsync_MakesItAlreadyCompleted_AndSetsMetadata()
     {
         await _store.TryBeginAsync(_key, _fingerprint, _policy, CancellationToken.None);
 
@@ -65,6 +70,10 @@ public class MemoryStoreTests
         Assert.Equal(TryBeginOutcome.AlreadyCompleted, result.Outcome);
         Assert.NotNull(result.Snapshot);
         Assert.Equal(200, result.Snapshot.StatusCode);
+
+        // Assert metadata was set
+        Assert.NotEqual(default, result.Snapshot.CreatedAtUtc);
+        Assert.NotEqual(default, result.Snapshot.ExpiresAtUtc);
     }
 
     [Fact]

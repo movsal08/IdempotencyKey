@@ -30,4 +30,13 @@ public class FingerprintProviderTests
 
         Assert.NotEqual(f1, f2);
     }
+
+    [Fact]
+    public void Compute_WithNullHeadersOrBody_Works()
+    {
+        var provider = new Sha256FingerprintProvider();
+        var f1 = provider.Compute("POST", "/api/test", "scope1", null, null);
+        Assert.NotNull(f1.Value);
+        Assert.NotEmpty(f1.Value);
+    }
 }

@@ -5,12 +5,12 @@ namespace IdempotencyKey.Core;
 
 public interface IFingerprintProvider
 {
-    Fingerprint Compute(string method, string routeTemplate, string scope, Dictionary<string, string[]> selectedHeaders, byte[] bodyHash);
+    Fingerprint Compute(string method, string routeTemplate, string scope, IDictionary<string, string[]>? selectedHeaders, byte[]? bodyHash);
 }
 
 public class Sha256FingerprintProvider : IFingerprintProvider
 {
-    public Fingerprint Compute(string method, string routeTemplate, string scope, Dictionary<string, string[]> selectedHeaders, byte[] bodyHash)
+    public Fingerprint Compute(string method, string routeTemplate, string scope, IDictionary<string, string[]>? selectedHeaders, byte[]? bodyHash)
     {
         // Canonicalize
         // method|route|scope|headerKey=val1,val2|...|bodyHash

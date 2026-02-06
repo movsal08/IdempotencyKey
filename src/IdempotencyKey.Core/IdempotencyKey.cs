@@ -7,5 +7,5 @@ public record struct IdempotencyKey(string Scope, string Key)
 
 public static class IdempotencyScopes
 {
-    public const string Default = "global";
+    public const string Default = "default";
 }

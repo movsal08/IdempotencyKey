@@ -5,7 +5,7 @@ namespace IdempotencyKey.Store.Memory;
 
 using IdempotencyKeyType = IdempotencyKey.Core.IdempotencyKey;
 
-public class MemoryIdempotencyStore : IIdempotencyStore
+public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
 {
     private class Entry
     {
@@ -16,8 +16,9 @@ public class MemoryIdempotencyStore : IIdempotencyStore
         public IdempotencyResponseSnapshot? Snapshot { get; set; }
     }
 
-    private readonly ConcurrentDictionary<string, Entry> _store = new();
+    private readonly ConcurrentDictionary<IdempotencyKeyType, Entry> _store = new();
     private readonly Timer _cleanupTimer;
+    private bool _disposed;
 
     public MemoryIdempotencyStore()
     {
@@ -27,9 +28,11 @@ public class MemoryIdempotencyStore : IIdempotencyStore
 
     private void Cleanup(object? state)
     {
+        if (_disposed) return;
+
         var now = DateTimeOffset.UtcNow;
         // Cast to ICollection to access atomic Remove(KeyValuePair) which ensures we only remove if the value matches
-        var collection = (ICollection<KeyValuePair<string, Entry>>)_store;
+        var collection = (ICollection<KeyValuePair<IdempotencyKeyType, Entry>>)_store;
 
         foreach (var kvp in _store)
         {
@@ -40,16 +43,15 @@ public class MemoryIdempotencyStore : IIdempotencyStore
         }
     }
 
-    private string GetKey(IdempotencyKeyType key) => key.ToString();
-
     public Task<TryBeginResult> TryBeginAsync(IdempotencyKeyType key, Fingerprint fingerprint, IdempotencyPolicy policy, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var storeKey = GetKey(key);
 
         while (true)
         {
-            if (_store.TryGetValue(storeKey, out var entry))
+            ct.ThrowIfCancellationRequested();
+
+            if (_store.TryGetValue(key, out var entry))
             {
                 // 1. Check TTL Expiry
                 if (entry.ExpiresAtUtc < now)
@@ -63,7 +65,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore
                         ExpiresAtUtc = now.Add(policy.Ttl)
                     };
 
-                    if (_store.TryUpdate(storeKey, newEntry, entry))
+                    if (_store.TryUpdate(key, newEntry, entry))
                     {
                         return Task.FromResult(new TryBeginResult(TryBeginOutcome.Acquired));
                     }
@@ -97,7 +99,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore
                             ExpiresAtUtc = now.Add(policy.Ttl) // Reset TTL as well
                         };
 
-                        if (_store.TryUpdate(storeKey, newEntry, entry))
+                        if (_store.TryUpdate(key, newEntry, entry))
                         {
                             return Task.FromResult(new TryBeginResult(TryBeginOutcome.Acquired));
                         }
@@ -126,7 +128,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore
                     ExpiresAtUtc = now.Add(policy.Ttl)
                 };
 
-                if (_store.TryAdd(storeKey, newEntry))
+                if (_store.TryAdd(key, newEntry))
                 {
                     return Task.FromResult(new TryBeginResult(TryBeginOutcome.Acquired));
                 }
@@ -140,11 +142,11 @@ public class MemoryIdempotencyStore : IIdempotencyStore
 
     public Task CompleteAsync(IdempotencyKeyType key, Fingerprint fingerprint, IdempotencyResponseSnapshot snapshot, TimeSpan ttl, CancellationToken ct)
     {
-        var storeKey = GetKey(key);
-
         while(true)
         {
-            if (_store.TryGetValue(storeKey, out var currentEntry))
+            ct.ThrowIfCancellationRequested();
+
+            if (_store.TryGetValue(key, out var currentEntry))
             {
                  // Check fingerprint
                  if (currentEntry.Fingerprint.Value != fingerprint.Value)
@@ -153,6 +155,11 @@ public class MemoryIdempotencyStore : IIdempotencyStore
                  }
 
                  var now = DateTimeOffset.UtcNow;
+
+                 // Update snapshot metadata
+                 snapshot.CreatedAtUtc = now;
+                 snapshot.ExpiresAtUtc = now.Add(ttl);
+
                  var completedEntry = new Entry
                  {
                      Fingerprint = currentEntry.Fingerprint,
@@ -162,7 +169,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore
                      Snapshot = snapshot
                  };
 
-                 if (_store.TryUpdate(storeKey, completedEntry, currentEntry))
+                 if (_store.TryUpdate(key, completedEntry, currentEntry))
                  {
                      break;
                  }
@@ -172,6 +179,11 @@ public class MemoryIdempotencyStore : IIdempotencyStore
             {
                 // Entry gone. Recreate as completed.
                 var now = DateTimeOffset.UtcNow;
+
+                 // Update snapshot metadata
+                 snapshot.CreatedAtUtc = now;
+                 snapshot.ExpiresAtUtc = now.Add(ttl);
+
                  var completedEntry = new Entry
                  {
                      Fingerprint = fingerprint,
@@ -180,7 +192,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore
                      ExpiresAtUtc = now.Add(ttl),
                      Snapshot = snapshot
                  };
-                 if (_store.TryAdd(storeKey, completedEntry))
+                 if (_store.TryAdd(key, completedEntry))
                  {
                      break;
                  }
@@ -193,7 +205,9 @@ public class MemoryIdempotencyStore : IIdempotencyStore
 
     public Task<IdempotencyResponseSnapshot?> TryGetCompletedAsync(IdempotencyKeyType key, CancellationToken ct)
     {
-        if (_store.TryGetValue(GetKey(key), out var entry))
+        ct.ThrowIfCancellationRequested();
+
+        if (_store.TryGetValue(key, out var entry))
         {
             if (entry.ExpiresAtUtc < DateTimeOffset.UtcNow)
             {
@@ -206,5 +220,13 @@ public class MemoryIdempotencyStore : IIdempotencyStore
             }
         }
         return Task.FromResult<IdempotencyResponseSnapshot?>(null);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _cleanupTimer.Dispose();
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 }
