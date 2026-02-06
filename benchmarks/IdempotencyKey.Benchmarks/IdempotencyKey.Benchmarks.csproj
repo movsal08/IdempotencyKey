@@ -5,9 +5,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RootNamespace>Benchmarks</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IdempotencyKey.Core\IdempotencyKey.Core.csproj" />
+    <ProjectReference Include="..\..\src\IdempotencyKey.Store.Memory\IdempotencyKey.Store.Memory.csproj" />
   </ItemGroup>
 </Project>
