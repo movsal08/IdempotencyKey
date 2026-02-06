@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.3.11429.125 d18.3
+VisualStudioVersion = 18.3.11429.125
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
@@ -28,6 +28,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IdempotencyKey.Benchmarks", "benchmarks\IdempotencyKey.Benchmarks\IdempotencyKey.Benchmarks.csproj", "{04521820-7F94-4527-A59C-D92018E62989}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IdempotencyKey.AspNetCore.Tests", "tests\IdempotencyKey.AspNetCore.Tests\IdempotencyKey.AspNetCore.Tests.csproj", "{6B7495FF-ED2F-5DF0-35B8-E9AD0151EE29}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IdempotencyKey.Store.Redis.Tests", "tests\IdempotencyKey.Store.Redis.Tests\IdempotencyKey.Store.Redis.Tests.csproj", "{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -147,6 +149,18 @@ Global
 		{6B7495FF-ED2F-5DF0-35B8-E9AD0151EE29}.Release|x64.Build.0 = Release|Any CPU
 		{6B7495FF-ED2F-5DF0-35B8-E9AD0151EE29}.Release|x86.ActiveCfg = Release|Any CPU
 		{6B7495FF-ED2F-5DF0-35B8-E9AD0151EE29}.Release|x86.Build.0 = Release|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Debug|x64.Build.0 = Debug|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Debug|x86.Build.0 = Debug|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Release|Any CPU.Build.0 = Release|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Release|x64.ActiveCfg = Release|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Release|x64.Build.0 = Release|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Release|x86.ActiveCfg = Release|Any CPU
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -161,5 +175,6 @@ Global
 		{FEEA3DED-1041-44E1-B2A1-36FFE3AC5A8B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{04521820-7F94-4527-A59C-D92018E62989} = {66320409-64EC-F7C5-3DEF-65E7510DAAD1}
 		{6B7495FF-ED2F-5DF0-35B8-E9AD0151EE29} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{52A8B320-B5A6-475E-B39F-DB0CFBEB6C22} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

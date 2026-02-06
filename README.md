@@ -18,6 +18,26 @@ The core library (`IdempotencyKey.Core`) defines the state machine and contracts
 - **Lease**: When a request starts, it acquires a "lock" (InFlight state) with a short lease. If the process crashes, the lease expires, allowing retries to re-acquire the lock.
 - **TTL**: All idempotency records have a Time-To-Live. After the TTL expires, the key is pruned, and subsequent requests with the same key are treated as new.
 
+## Storage Providers
+
+### Memory
+Available in `IdempotencyKey.Store.Memory`.
+Suitable for development and testing. Data is lost on process restart.
+
+### Redis
+Available in `IdempotencyKey.Store.Redis`.
+Production-grade distributed storage using Redis.
+
+```csharp
+// Example registration
+builder.Services.AddSingleton<IIdempotencyStore>(sp =>
+    new RedisIdempotencyStore(new RedisIdempotencyStoreOptions
+    {
+        Configuration = "localhost:6379",
+        KeyPrefix = "idem:"
+    }));
+```
+
 ## Quickstart
 
 (Coming soon)
