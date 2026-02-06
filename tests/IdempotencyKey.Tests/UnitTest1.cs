@@ -1,6 +1,6 @@
 ﻿namespace IdempotencyKey.Tests;
 
-public class UnitTest1
+public class IdempotencyKeyTests
 {
     [Fact]
     public void Test1()
