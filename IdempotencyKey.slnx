@@ -19,6 +19,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/IdempotencyKey.AspNetCore.Tests/IdempotencyKey.AspNetCore.Tests.csproj" />
+    <Project Path="tests/IdempotencyKey.Store.Postgres.Tests/IdempotencyKey.Store.Postgres.Tests.csproj" />
     <Project Path="tests/IdempotencyKey.Store.Redis.Tests/IdempotencyKey.Store.Redis.Tests.csproj" />
     <Project Path="tests/IdempotencyKey.Tests/IdempotencyKey.Tests.csproj" />
   </Folder>

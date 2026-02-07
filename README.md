@@ -38,6 +38,32 @@ builder.Services.AddSingleton<IIdempotencyStore>(sp =>
     }));
 ```
 
+### Postgres
+Available in `IdempotencyKey.Store.Postgres`.
+Production-grade relational storage using Postgres. Uses atomic transactions and `ON CONFLICT` semantics.
+
+```csharp
+// Example registration
+builder.Services.AddSingleton<IIdempotencyStore>(sp =>
+    new PostgresIdempotencyStore(new PostgresIdempotencyStoreOptions
+    {
+        ConnectionString = "Host=localhost;Username=postgres;Password=password",
+        TableName = "idempotency_records", // Optional
+        EnableEnsureCreated = true // Optional: Creates table on startup (dev only)
+    }));
+```
+
+Note: `EnableEnsureCreated` is convenient for development but for production it is recommended to manage schema migrations separately.
+
+## Testing
+
+Integration tests for `IdempotencyKey.Store.Redis` and `IdempotencyKey.Store.Postgres` utilize [Testcontainers](https://testcontainers.com/). These tests require a Docker environment. If Docker is not available (e.g., in some CI environments), the tests will gracefully skip.
+
+To run tests locally:
+```bash
+dotnet test
+```
+
 ## Quickstart
 
 (Coming soon)
