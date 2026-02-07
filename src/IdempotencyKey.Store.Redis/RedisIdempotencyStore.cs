@@ -4,11 +4,13 @@ using StackExchange.Redis;
 
 namespace IdempotencyKey.Store.Redis;
 
-public class RedisIdempotencyStore : IIdempotencyStore
+public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
 {
     private readonly RedisIdempotencyStoreOptions _options;
     private readonly IConnectionMultiplexer _multiplexer;
     private readonly IDatabase _db;
+    private readonly bool _ownMultiplexer;
+    private bool _disposed;
 
     // Scripts
     private const string TryBeginScript = @"
@@ -77,6 +79,9 @@ public class RedisIdempotencyStore : IIdempotencyStore
         return 'ok'
     ";
 
+    private static LuaScript? _tryBeginLua;
+    private static LuaScript? _completeLua;
+
     public RedisIdempotencyStore(RedisIdempotencyStoreOptions options)
     {
         _options = options;
@@ -84,10 +89,12 @@ public class RedisIdempotencyStore : IIdempotencyStore
         if (options.ConnectionMultiplexerFactory != null)
         {
             _multiplexer = options.ConnectionMultiplexerFactory().GetAwaiter().GetResult();
+            _ownMultiplexer = false;
         }
         else if (!string.IsNullOrEmpty(options.Configuration))
         {
             _multiplexer = ConnectionMultiplexer.Connect(options.Configuration);
+            _ownMultiplexer = true;
         }
         else
         {
@@ -95,6 +102,16 @@ public class RedisIdempotencyStore : IIdempotencyStore
         }
 
         _db = _multiplexer.GetDatabase(options.Database ?? -1);
+
+        // Prepare scripts if not already loaded
+        if (_tryBeginLua == null)
+        {
+            _tryBeginLua = LuaScript.Prepare(TryBeginScript);
+        }
+        if (_completeLua == null)
+        {
+            _completeLua = LuaScript.Prepare(CompleteScript);
+        }
     }
 
     public async Task<TryBeginResult> TryBeginAsync(IdempotencyKey.Core.IdempotencyKey key, Fingerprint fingerprint, IdempotencyPolicy policy, CancellationToken ct)
@@ -105,9 +122,15 @@ public class RedisIdempotencyStore : IIdempotencyStore
         var leaseDurationMs = (long)policy.LeaseDuration.TotalMilliseconds;
         var ttlMs = (long)policy.Ttl.TotalMilliseconds;
 
-        var result = await _db.ScriptEvaluateAsync(TryBeginScript,
-            keys: new RedisKey[] { redisKey },
-            values: new RedisValue[] { fingerprint.Value, leaseDurationMs, ttlMs });
+        if (_tryBeginLua == null) throw new InvalidOperationException("TryBeginScript not loaded");
+
+        var result = await _db.ScriptEvaluateAsync(_tryBeginLua,
+            new {
+                key = (RedisKey)redisKey,
+                fingerprint = fingerprint.Value,
+                lease_duration_ms = leaseDurationMs,
+                ttl_ms = ttlMs
+            });
 
         if (result.IsNull)
         {
@@ -150,9 +173,15 @@ public class RedisIdempotencyStore : IIdempotencyStore
         var snapshotJson = JsonSerializer.Serialize(snapshot, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
         var ttlMs = (long)ttl.TotalMilliseconds;
 
-        var result = await _db.ScriptEvaluateAsync(CompleteScript,
-            keys: new RedisKey[] { redisKey },
-            values: new RedisValue[] { fingerprint.Value, snapshotJson, ttlMs });
+        if (_completeLua == null) throw new InvalidOperationException("CompleteScript not loaded");
+
+        var result = await _db.ScriptEvaluateAsync(_completeLua,
+            new {
+                key = (RedisKey)redisKey,
+                fingerprint = fingerprint.Value,
+                snapshot_json = snapshotJson,
+                ttl_ms = ttlMs
+            });
 
         string? status = (string?)result;
 
@@ -183,5 +212,18 @@ public class RedisIdempotencyStore : IIdempotencyStore
     private string GetRedisKey(IdempotencyKey.Core.IdempotencyKey key)
     {
         return $"{_options.KeyPrefix}{key.Scope}:{key.Key}";
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        if (_ownMultiplexer)
+        {
+            _multiplexer.Dispose();
+        }
+
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 }
