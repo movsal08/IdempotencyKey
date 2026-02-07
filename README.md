@@ -55,6 +55,15 @@ builder.Services.AddSingleton<IIdempotencyStore>(sp =>
 
 Note: `EnableEnsureCreated` is convenient for development but for production it is recommended to manage schema migrations separately.
 
+## Testing
+
+Integration tests for `IdempotencyKey.Store.Redis` and `IdempotencyKey.Store.Postgres` utilize [Testcontainers](https://testcontainers.com/). These tests require a Docker environment. If Docker is not available (e.g., in some CI environments), the tests will gracefully skip.
+
+To run tests locally:
+```bash
+dotnet test
+```
+
 ## Quickstart
 
 (Coming soon)

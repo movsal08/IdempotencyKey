@@ -33,6 +33,16 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
         }
     }
 
+    private NpgsqlCommand CreateCommand(string sql, NpgsqlConnection conn, NpgsqlTransaction? tx = null)
+    {
+        var cmd = new NpgsqlCommand(sql, conn, tx);
+        if (_options.CommandTimeoutSeconds.HasValue)
+        {
+            cmd.CommandTimeout = _options.CommandTimeoutSeconds.Value;
+        }
+        return cmd;
+    }
+
     public async Task<TryBeginResult> TryBeginAsync(IdempotencyKey.Core.IdempotencyKey key, Fingerprint fingerprint, IdempotencyPolicy policy, CancellationToken ct)
     {
         var attempts = 0;
@@ -56,7 +66,7 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
                 var formattedInsertSql = string.Format(insertSql, GetTableName());
 
-                using (var cmd = new NpgsqlCommand(formattedInsertSql, conn, tx))
+                using (var cmd = CreateCommand(formattedInsertSql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("s", key.Scope);
                     cmd.Parameters.AddWithValue("k", key.Key);
@@ -89,7 +99,7 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
                 string? storedSnapshotJson = null;
                 bool found = false;
 
-                using (var cmd = new NpgsqlCommand(formattedSelectSql, conn, tx))
+                using (var cmd = CreateCommand(formattedSelectSql, conn, tx))
                 {
                     cmd.Parameters.AddWithValue("s", key.Scope);
                     cmd.Parameters.AddWithValue("k", key.Key);
@@ -113,30 +123,24 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
                 if (!found)
                 {
-                    // Row disappeared (deleted or expired/cleaned up) between INSERT attempt and SELECT.
-                    // Retry loop will attempt INSERT again.
                     await tx.RollbackAsync(ct);
                     continue;
                 }
 
                 // 3. Logic checks
-                // Check Expiry
                 if (storedExpiresAt < now)
                 {
-                    // Treat as expired/missing -> Overwrite to InFlight
                     await UpdateToInflightAsync(conn, tx, key, fingerprint, leaseUntil, expiresAt, now, ct);
                     await tx.CommitAsync(ct);
                     return new TryBeginResult(TryBeginOutcome.Acquired);
                 }
 
-                // Check Fingerprint
                 if (storedFingerprint != fingerprint.Value)
                 {
                     await tx.CommitAsync(ct);
                     return new TryBeginResult(TryBeginOutcome.Conflict, ConflictReason: "Fingerprint mismatch");
                 }
 
-                // Check State
                 if (storedState == "completed")
                 {
                     await tx.CommitAsync(ct);
@@ -152,15 +156,12 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
                 {
                     if (storedLeaseUntil < now)
                     {
-                        // Lease expired -> Re-acquire
-                        // Refresh expires_at as well
                         await UpdateToInflightAsync(conn, tx, key, fingerprint, leaseUntil, expiresAt, now, ct);
                         await tx.CommitAsync(ct);
                         return new TryBeginResult(TryBeginOutcome.Acquired);
                     }
                     else
                     {
-                        // Active Lease
                         await tx.CommitAsync(ct);
                         var retryAfter = storedLeaseUntil - now;
                         if (retryAfter < TimeSpan.Zero) retryAfter = TimeSpan.Zero;
@@ -194,7 +195,7 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
         var formattedSql = string.Format(updateSql, GetTableName());
 
-        using var cmd = new NpgsqlCommand(formattedSql, conn, tx);
+        using var cmd = CreateCommand(formattedSql, conn, tx);
         cmd.Parameters.AddWithValue("s", key.Scope);
         cmd.Parameters.AddWithValue("k", key.Key);
         cmd.Parameters.AddWithValue("fp", fingerprint.Value);
@@ -214,19 +215,8 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
         {
              var now = DateTimeOffset.UtcNow;
              var expiresAt = now.Add(ttl);
-
-             // Ensure snapshot metadata timestamps are populated before serialization
-             if (snapshot.CreatedAtUtc == default)
-             {
-                 snapshot.CreatedAtUtc = now;
-             }
-             if (snapshot.ExpiresAtUtc == default)
-             {
-                 snapshot.ExpiresAtUtc = expiresAt;
-             }
              var snapshotJson = JsonSerializer.Serialize(snapshot, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
 
-             // UPSERT: Insert if missing, Update if exists (and matches fingerprint)
              const string sql = @"
                 INSERT INTO {0} (scope, key, fingerprint, state, lease_until_utc, expires_at_utc, created_at_utc, updated_at_utc, snapshot_json)
                 VALUES (@s, @k, @fp, 'completed', @now, @exp, @now, @now, @json::jsonb)
@@ -239,7 +229,7 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
              var formattedSql = string.Format(sql, GetTableName());
 
-             using var cmd = new NpgsqlCommand(formattedSql, conn, tx);
+             using var cmd = CreateCommand(formattedSql, conn, tx);
              cmd.Parameters.AddWithValue("s", key.Scope);
              cmd.Parameters.AddWithValue("k", key.Key);
              cmd.Parameters.AddWithValue("fp", fingerprint.Value);
@@ -251,7 +241,6 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
              if (rows == 0)
              {
-                 // Row existed but fingerprint check in WHERE clause failed.
                  throw new InvalidOperationException("Fingerprint mismatch during completion.");
              }
 
@@ -275,7 +264,7 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
         var formattedSql = string.Format(sql, GetTableName());
 
-        using var cmd = new NpgsqlCommand(formattedSql, conn);
+        using var cmd = CreateCommand(formattedSql, conn);
         cmd.Parameters.AddWithValue("s", key.Scope);
         cmd.Parameters.AddWithValue("k", key.Key);
 
@@ -285,7 +274,6 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
             var state = reader.GetString(0);
             var expiresAt = reader.GetFieldValue<DateTimeOffset>(2);
 
-            // Check expiry
             if (expiresAt < DateTimeOffset.UtcNow)
             {
                 return null;
@@ -307,7 +295,16 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
 
+        // Create Schema if needed
+        if (!_options.Schema.Equals("public", StringComparison.OrdinalIgnoreCase))
+        {
+            var createSchemaSql = $"CREATE SCHEMA IF NOT EXISTS {QuoteIdentifier(_options.Schema)}";
+            using var cmdSchema = CreateCommand(createSchemaSql, conn);
+            await cmdSchema.ExecuteNonQueryAsync(ct);
+        }
+
         var fullTableName = GetTableName();
+        var indexName = QuoteIdentifier($"IX_{_options.TableName}_expires_at_utc");
 
         var sql = $@"
             CREATE TABLE IF NOT EXISTS {fullTableName} (
@@ -323,10 +320,10 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
                 PRIMARY KEY (scope, key)
             );
 
-            CREATE INDEX IF NOT EXISTS ""IX_{_options.TableName}_expires_at_utc"" ON {fullTableName} (expires_at_utc);
+            CREATE INDEX IF NOT EXISTS {indexName} ON {fullTableName} (expires_at_utc);
         ";
 
-        using var cmd = new NpgsqlCommand(sql, conn);
+        using var cmd = CreateCommand(sql, conn);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
