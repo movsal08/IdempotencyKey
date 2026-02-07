@@ -214,6 +214,16 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
         {
              var now = DateTimeOffset.UtcNow;
              var expiresAt = now.Add(ttl);
+
+             // Ensure snapshot metadata timestamps are populated before serialization
+             if (snapshot.CreatedAtUtc == default)
+             {
+                 snapshot.CreatedAtUtc = now;
+             }
+             if (snapshot.ExpiresAtUtc == default)
+             {
+                 snapshot.ExpiresAtUtc = expiresAt;
+             }
              var snapshotJson = JsonSerializer.Serialize(snapshot, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
 
              // UPSERT: Insert if missing, Update if exists (and matches fingerprint)
