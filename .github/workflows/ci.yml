@@ -23,5 +23,7 @@ jobs:
     - name: Build
       run: dotnet build -c Release --no-restore
 
-    - name: Test
-      run: dotnet test -c Release --no-build
+    - name: Test (no container dependencies)
+      run: |
+        dotnet test tests/IdempotencyKey.Tests/IdempotencyKey.Tests.csproj -c Release --no-build
+        dotnet test tests/IdempotencyKey.AspNetCore.Tests/IdempotencyKey.AspNetCore.Tests.csproj -c Release --no-build
