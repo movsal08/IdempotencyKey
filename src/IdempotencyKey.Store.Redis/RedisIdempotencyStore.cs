@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using IdempotencyKey.Core;
 using StackExchange.Redis;
@@ -127,6 +128,7 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
         return new RedisIdempotencyStore(options);
     }
 
+    [MemberNotNull(nameof(_options), nameof(_multiplexer), nameof(_db))]
     private void Initialize(RedisIdempotencyStoreOptions options, IConnectionMultiplexer multiplexer, bool ownMultiplexer)
     {
         _options = options;
