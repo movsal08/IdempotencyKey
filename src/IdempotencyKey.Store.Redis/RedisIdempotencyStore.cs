@@ -6,10 +6,10 @@ namespace IdempotencyKey.Store.Redis;
 
 public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
 {
-    private readonly RedisIdempotencyStoreOptions _options;
-    private readonly IConnectionMultiplexer _multiplexer;
-    private readonly IDatabase _db;
-    private readonly bool _ownMultiplexer;
+    private RedisIdempotencyStoreOptions _options;
+    private IConnectionMultiplexer _multiplexer;
+    private IDatabase _db;
+    private bool _ownMultiplexer;
     private bool _disposed;
 
     // Scripts
@@ -84,22 +84,54 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
 
     public RedisIdempotencyStore(RedisIdempotencyStoreOptions options)
     {
-        _options = options;
+        if (options.ConnectionMultiplexerFactory != null)
+        {
+            throw new InvalidOperationException("ConnectionMultiplexerFactory is async. Use RedisIdempotencyStore.CreateAsync when providing a factory.");
+        }
+
+        if (options.ConnectionMultiplexer != null)
+        {
+            Initialize(options, options.ConnectionMultiplexer, ownMultiplexer: false);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(options.Configuration))
+        {
+            Initialize(options, ConnectionMultiplexer.Connect(options.Configuration), ownMultiplexer: true);
+            return;
+        }
+
+        throw new ArgumentException("Either Configuration, ConnectionMultiplexer, or ConnectionMultiplexerFactory must be provided in RedisIdempotencyStoreOptions.");
+    }
+
+    private RedisIdempotencyStore(RedisIdempotencyStoreOptions options, IConnectionMultiplexer multiplexer, bool ownMultiplexer)
+    {
+        Initialize(options, multiplexer, ownMultiplexer);
+    }
+
+    public static async Task<RedisIdempotencyStore> CreateAsync(RedisIdempotencyStoreOptions options, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        if (options.ConnectionMultiplexer != null)
+        {
+            return new RedisIdempotencyStore(options, options.ConnectionMultiplexer, ownMultiplexer: false);
+        }
 
         if (options.ConnectionMultiplexerFactory != null)
         {
-            _multiplexer = options.ConnectionMultiplexerFactory().GetAwaiter().GetResult();
-            _ownMultiplexer = false;
+            var multiplexer = await options.ConnectionMultiplexerFactory().ConfigureAwait(false);
+            return new RedisIdempotencyStore(options, multiplexer, ownMultiplexer: false);
         }
-        else if (!string.IsNullOrEmpty(options.Configuration))
-        {
-            _multiplexer = ConnectionMultiplexer.Connect(options.Configuration);
-            _ownMultiplexer = true;
-        }
-        else
-        {
-             throw new ArgumentException("Either Configuration or ConnectionMultiplexerFactory must be provided in RedisIdempotencyStoreOptions.");
-        }
+
+        return new RedisIdempotencyStore(options);
+    }
+
+    private void Initialize(RedisIdempotencyStoreOptions options, IConnectionMultiplexer multiplexer, bool ownMultiplexer)
+    {
+        _options = options;
+        _multiplexer = multiplexer;
+        _ownMultiplexer = ownMultiplexer;
 
         _db = _multiplexer.GetDatabase(options.Database ?? -1);
 
@@ -122,19 +154,14 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
         var leaseDurationMs = (long)policy.LeaseDuration.TotalMilliseconds;
         var ttlMs = (long)policy.Ttl.TotalMilliseconds;
 
-        if (_tryBeginLua == null) throw new InvalidOperationException("TryBeginScript not loaded");
-
-        var result = await _db.ScriptEvaluateAsync(_tryBeginLua,
-            new {
-                key = (RedisKey)redisKey,
-                fingerprint = fingerprint.Value,
-                lease_duration_ms = leaseDurationMs,
-                ttl_ms = ttlMs
-            });
+        var result = await _db.ScriptEvaluateAsync(
+            TryBeginScript,
+            new RedisKey[] { redisKey },
+            new RedisValue[] { fingerprint.Value, leaseDurationMs, ttlMs });
 
         if (result.IsNull)
         {
-             throw new InvalidOperationException("Redis script returned null.");
+            throw new InvalidOperationException("Redis script returned null.");
         }
 
         var resultArray = (RedisResult[])result!;
@@ -142,7 +169,7 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
 
         if (status is null)
         {
-             throw new InvalidOperationException("Redis script returned null status.");
+            throw new InvalidOperationException("Redis script returned null status.");
         }
 
         switch (status)
@@ -173,15 +200,10 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
         var snapshotJson = JsonSerializer.Serialize(snapshot, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
         var ttlMs = (long)ttl.TotalMilliseconds;
 
-        if (_completeLua == null) throw new InvalidOperationException("CompleteScript not loaded");
-
-        var result = await _db.ScriptEvaluateAsync(_completeLua,
-            new {
-                key = (RedisKey)redisKey,
-                fingerprint = fingerprint.Value,
-                snapshot_json = snapshotJson,
-                ttl_ms = ttlMs
-            });
+        var result = await _db.ScriptEvaluateAsync(
+            CompleteScript,
+            new RedisKey[] { redisKey },
+            new RedisValue[] { fingerprint.Value, snapshotJson, ttlMs });
 
         string? status = (string?)result;
 
@@ -203,7 +225,7 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
 
         if (state == "completed" && !string.IsNullOrEmpty(snapshotJson))
         {
-             return JsonSerializer.Deserialize(snapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+            return JsonSerializer.Deserialize(snapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
         }
 
         return null;

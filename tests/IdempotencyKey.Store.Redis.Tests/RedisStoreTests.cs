@@ -1,6 +1,4 @@
-using System.Collections.Concurrent;
 using IdempotencyKey.Core;
-using IdempotencyKey.Store.Redis;
 using Testcontainers.Redis;
 using Xunit;
 using Xunit.Abstractions;

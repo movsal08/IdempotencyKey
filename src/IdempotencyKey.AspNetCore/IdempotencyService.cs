@@ -1,11 +1,9 @@
-using System.Net;
 using IdempotencyKey.Core;
-using IdempotencyKeyStruct = IdempotencyKey.Core.IdempotencyKey;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using IdempotencyKeyStruct = IdempotencyKey.Core.IdempotencyKey;
 
 namespace IdempotencyKey.AspNetCore;
 
@@ -46,9 +44,9 @@ public class IdempotencyService
         var (key, fingerprint, validationError) = await PrepareRequestAsync(httpContext);
         if (validationError != null)
         {
-             httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-             await httpContext.Response.WriteAsync(validationError);
-             return;
+            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await httpContext.Response.WriteAsync(validationError);
+            return;
         }
 
         if (key == null || fingerprint == null)
@@ -80,7 +78,7 @@ public class IdempotencyService
     // Exposed for Filter
     public async Task<(IdempotencyKeyStruct? Key, Fingerprint? Fingerprint, string? Error)> PrepareRequestAsync(HttpContext httpContext)
     {
-         // 1. Validate Header
+        // 1. Validate Header
         if (!httpContext.Request.Headers.TryGetValue(_options.HeaderName, out var headerValue) || string.IsNullOrWhiteSpace(headerValue))
         {
             return (null, null, $"Missing or empty {_options.HeaderName} header.");
@@ -97,15 +95,15 @@ public class IdempotencyService
 
         if (httpContext.Request.ContentLength > 0 || (httpContext.Request.ContentLength == null && httpContext.Request.Body.CanSeek))
         {
-             httpContext.Request.Body.Position = 0;
-             using var memoryStream = new MemoryStream();
-             await httpContext.Request.Body.CopyToAsync(memoryStream, httpContext.RequestAborted);
-             bodyHash = _hasher.Hash(memoryStream.ToArray());
-             httpContext.Request.Body.Position = 0;
+            httpContext.Request.Body.Position = 0;
+            using var memoryStream = new MemoryStream();
+            await httpContext.Request.Body.CopyToAsync(memoryStream, httpContext.RequestAborted);
+            bodyHash = _hasher.Hash(memoryStream.ToArray());
+            httpContext.Request.Body.Position = 0;
         }
 
         var selectedHeaders = new Dictionary<string, string[]>();
-        foreach(var h in _options.HeaderKeysToIncludeInFingerprint)
+        foreach (var h in _options.HeaderKeysToIncludeInFingerprint)
         {
             if (httpContext.Request.Headers.TryGetValue(h, out var val))
             {
@@ -194,7 +192,7 @@ public class IdempotencyService
             Headers = new Dictionary<string, string[]>()
         };
 
-        foreach(var h in httpContext.Response.Headers)
+        foreach (var h in httpContext.Response.Headers)
         {
             if (!IsUnsafeHeader(h.Key))
             {
@@ -209,11 +207,11 @@ public class IdempotencyService
     {
         if (settings.InFlightMode == InFlightMode.RetryAfter)
         {
-             // Immediate return
-             httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
-             httpContext.Response.Headers["Retry-After"] = ((int)settings.RetryAfterSeconds).ToString();
-             await httpContext.Response.WriteAsync("Request is currently in-flight. Please try again later.");
-             return;
+            // Immediate return
+            httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+            httpContext.Response.Headers["Retry-After"] = ((int)settings.RetryAfterSeconds).ToString();
+            await httpContext.Response.WriteAsync("Request is currently in-flight. Please try again later.");
+            return;
         }
 
         // Wait Mode
@@ -239,10 +237,10 @@ public class IdempotencyService
         catch (OperationCanceledException)
         {
             // Timeout or RequestAborted
-             if (httpContext.RequestAborted.IsCancellationRequested)
-             {
-                 throw;
-             }
+            if (httpContext.RequestAborted.IsCancellationRequested)
+            {
+                throw;
+            }
         }
 
         // Timeout reached
@@ -259,7 +257,7 @@ public class IdempotencyService
             httpContext.Response.ContentType = snapshot.ContentType;
         }
 
-        foreach(var h in snapshot.Headers)
+        foreach (var h in snapshot.Headers)
         {
             httpContext.Response.Headers[h.Key] = h.Value;
         }

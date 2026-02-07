@@ -1,4 +1,4 @@
-﻿namespace IdempotencyKey.Tests;
+namespace IdempotencyKey.Tests;
 
 public class IdempotencyKeyTests
 {

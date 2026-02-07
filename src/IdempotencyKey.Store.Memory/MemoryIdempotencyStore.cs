@@ -142,61 +142,61 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
 
     public Task CompleteAsync(IdempotencyKeyType key, Fingerprint fingerprint, IdempotencyResponseSnapshot snapshot, TimeSpan ttl, CancellationToken ct)
     {
-        while(true)
+        while (true)
         {
             ct.ThrowIfCancellationRequested();
 
             if (_store.TryGetValue(key, out var currentEntry))
             {
-                 // Check fingerprint
-                 if (currentEntry.Fingerprint.Value != fingerprint.Value)
-                 {
-                     throw new InvalidOperationException("Fingerprint mismatch during completion.");
-                 }
+                // Check fingerprint
+                if (currentEntry.Fingerprint.Value != fingerprint.Value)
+                {
+                    throw new InvalidOperationException("Fingerprint mismatch during completion.");
+                }
 
-                 var now = DateTimeOffset.UtcNow;
+                var now = DateTimeOffset.UtcNow;
 
-                 // Update snapshot metadata
-                 snapshot.CreatedAtUtc = now;
-                 snapshot.ExpiresAtUtc = now.Add(ttl);
+                // Update snapshot metadata
+                snapshot.CreatedAtUtc = now;
+                snapshot.ExpiresAtUtc = now.Add(ttl);
 
-                 var completedEntry = new Entry
-                 {
-                     Fingerprint = currentEntry.Fingerprint,
-                     State = IdempotencyEntryState.Completed,
-                     LeaseUntilUtc = DateTimeOffset.MinValue,
-                     ExpiresAtUtc = now.Add(ttl),
-                     Snapshot = snapshot
-                 };
+                var completedEntry = new Entry
+                {
+                    Fingerprint = currentEntry.Fingerprint,
+                    State = IdempotencyEntryState.Completed,
+                    LeaseUntilUtc = DateTimeOffset.MinValue,
+                    ExpiresAtUtc = now.Add(ttl),
+                    Snapshot = snapshot
+                };
 
-                 if (_store.TryUpdate(key, completedEntry, currentEntry))
-                 {
-                     break;
-                 }
-                 // Retry if update failed
+                if (_store.TryUpdate(key, completedEntry, currentEntry))
+                {
+                    break;
+                }
+                // Retry if update failed
             }
             else
             {
                 // Entry gone. Recreate as completed.
                 var now = DateTimeOffset.UtcNow;
 
-                 // Update snapshot metadata
-                 snapshot.CreatedAtUtc = now;
-                 snapshot.ExpiresAtUtc = now.Add(ttl);
+                // Update snapshot metadata
+                snapshot.CreatedAtUtc = now;
+                snapshot.ExpiresAtUtc = now.Add(ttl);
 
-                 var completedEntry = new Entry
-                 {
-                     Fingerprint = fingerprint,
-                     State = IdempotencyEntryState.Completed,
-                     LeaseUntilUtc = DateTimeOffset.MinValue,
-                     ExpiresAtUtc = now.Add(ttl),
-                     Snapshot = snapshot
-                 };
-                 if (_store.TryAdd(key, completedEntry))
-                 {
-                     break;
-                 }
-                 // Retry if add failed
+                var completedEntry = new Entry
+                {
+                    Fingerprint = fingerprint,
+                    State = IdempotencyEntryState.Completed,
+                    LeaseUntilUtc = DateTimeOffset.MinValue,
+                    ExpiresAtUtc = now.Add(ttl),
+                    Snapshot = snapshot
+                };
+                if (_store.TryAdd(key, completedEntry))
+                {
+                    break;
+                }
+                // Retry if add failed
             }
         }
 

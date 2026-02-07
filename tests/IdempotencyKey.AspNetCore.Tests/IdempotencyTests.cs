@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using IdempotencyKey.Core;
 using IdempotencyKey.Store.Memory;
 using Microsoft.AspNetCore.Builder;
@@ -8,7 +7,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Xunit;
 
 namespace IdempotencyKey.AspNetCore.Tests;
 

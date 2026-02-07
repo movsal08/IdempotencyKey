@@ -10,6 +10,11 @@ public class RedisIdempotencyStoreOptions
     public string? Configuration { get; set; }
 
     /// <summary>
+    /// An existing ConnectionMultiplexer instance. If set, this takes precedence over Configuration.
+    /// </summary>
+    public IConnectionMultiplexer? ConnectionMultiplexer { get; set; }
+
+    /// <summary>
     /// An existing ConnectionMultiplexer factory. If set, this takes precedence over Configuration.
     /// </summary>
     public Func<Task<IConnectionMultiplexer>>? ConnectionMultiplexerFactory { get; set; }
