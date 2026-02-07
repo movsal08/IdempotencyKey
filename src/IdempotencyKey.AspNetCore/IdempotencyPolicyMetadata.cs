@@ -1,5 +1,3 @@
-using IdempotencyKey.Core;
-
 namespace IdempotencyKey.AspNetCore;
 
 public class IdempotencyPolicyMetadata

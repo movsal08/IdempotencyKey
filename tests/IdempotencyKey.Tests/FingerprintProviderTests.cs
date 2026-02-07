@@ -1,5 +1,4 @@
 using IdempotencyKey.Core;
-using System.Text;
 
 namespace IdempotencyKey.Tests;
 

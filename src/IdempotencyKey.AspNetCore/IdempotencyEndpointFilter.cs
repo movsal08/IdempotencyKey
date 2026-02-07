@@ -116,32 +116,32 @@ public class IdempotencyEndpointFilter : IEndpointFilter
 
             try
             {
-                 if (_inner is IResult r)
-                 {
-                     await r.ExecuteAsync(httpContext);
-                 }
-                 else if (_inner is string s)
-                 {
-                     // Simple string result
-                     await httpContext.Response.WriteAsync(s);
-                 }
-                 else if (_inner != null)
-                 {
-                     // JSON by default for objects
-                     await httpContext.Response.WriteAsJsonAsync(_inner);
-                 }
+                if (_inner is IResult r)
+                {
+                    await r.ExecuteAsync(httpContext);
+                }
+                else if (_inner is string s)
+                {
+                    // Simple string result
+                    await httpContext.Response.WriteAsync(s);
+                }
+                else if (_inner != null)
+                {
+                    // JSON by default for objects
+                    await httpContext.Response.WriteAsJsonAsync(_inner);
+                }
 
-                 httpContext.Response.Body = originalBody;
+                httpContext.Response.Body = originalBody;
 
-                 await _service.ProcessResponseAndCompleteAsync(httpContext, responseBuffer, _key, _fingerprint, _settings);
+                await _service.ProcessResponseAndCompleteAsync(httpContext, responseBuffer, _key, _fingerprint, _settings);
 
-                 responseBuffer.Position = 0;
-                 await responseBuffer.CopyToAsync(originalBody);
+                responseBuffer.Position = 0;
+                await responseBuffer.CopyToAsync(originalBody);
             }
             catch
             {
-                 httpContext.Response.Body = originalBody;
-                 throw;
+                httpContext.Response.Body = originalBody;
+                throw;
             }
         }
     }
