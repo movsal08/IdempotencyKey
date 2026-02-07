@@ -23,5 +23,12 @@ jobs:
     - name: Build
       run: dotnet build -c Release --no-restore
 
-    - name: Test
-      run: dotnet test -c Release --no-build
+    - name: Unit Tests
+      run: |
+        dotnet test tests/IdempotencyKey.Tests/IdempotencyKey.Tests.csproj -c Release --no-build
+        dotnet test tests/IdempotencyKey.AspNetCore.Tests/IdempotencyKey.AspNetCore.Tests.csproj -c Release --no-build
+
+    - name: Integration Tests
+      run: |
+        dotnet test tests/IdempotencyKey.Store.Postgres.Tests/IdempotencyKey.Store.Postgres.Tests.csproj -c Release --no-build
+        dotnet test tests/IdempotencyKey.Store.Redis.Tests/IdempotencyKey.Store.Redis.Tests.csproj -c Release --no-build

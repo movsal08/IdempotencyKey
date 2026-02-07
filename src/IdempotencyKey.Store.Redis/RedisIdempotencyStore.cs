@@ -5,7 +5,7 @@ using StackExchange.Redis;
 
 namespace IdempotencyKey.Store.Redis;
 
-public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
+public class RedisIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDisposable
 {
     private RedisIdempotencyStoreOptions _options;
     private IConnectionMultiplexer _multiplexer;
@@ -13,12 +13,12 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
     private bool _ownMultiplexer;
     private bool _disposed;
 
-    // Scripts
+    // Scripts using named parameters for LuaScript.Prepare
     private const string TryBeginScript = @"
-        local key = KEYS[1]
-        local fingerprint = ARGV[1]
-        local lease_duration_ms = tonumber(ARGV[2])
-        local ttl_ms = tonumber(ARGV[3])
+        local key = @key
+        local fingerprint = @fingerprint
+        local lease_duration_ms = tonumber(@lease_duration_ms)
+        local ttl_ms = tonumber(@ttl_ms)
 
         local time = redis.call('TIME')
         local now_ms = time[1] * 1000 + math.floor(time[2] / 1000)
@@ -60,10 +60,10 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
     ";
 
     private const string CompleteScript = @"
-        local key = KEYS[1]
-        local fingerprint = ARGV[1]
-        local snapshot_json = ARGV[2]
-        local ttl_ms = tonumber(ARGV[3])
+        local key = @key
+        local fingerprint = @fingerprint
+        local snapshot_json = @snapshot_json
+        local ttl_ms = tonumber(@ttl_ms)
 
         local state = redis.call('HGET', key, 'state')
 
@@ -152,14 +152,17 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
     {
         ct.ThrowIfCancellationRequested();
 
-        var redisKey = GetRedisKey(key);
+        var redisKey = (RedisKey)GetRedisKey(key);
         var leaseDurationMs = (long)policy.LeaseDuration.TotalMilliseconds;
         var ttlMs = (long)policy.Ttl.TotalMilliseconds;
 
-        var result = await _db.ScriptEvaluateAsync(
-            TryBeginScript,
-            new RedisKey[] { redisKey },
-            new RedisValue[] { fingerprint.Value, leaseDurationMs, ttlMs });
+        var result = await _tryBeginLua!.EvaluateAsync(_db, new
+        {
+            key = redisKey,
+            fingerprint = fingerprint.Value,
+            lease_duration_ms = leaseDurationMs,
+            ttl_ms = ttlMs
+        });
 
         if (result.IsNull)
         {
@@ -198,14 +201,17 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
     {
         ct.ThrowIfCancellationRequested();
 
-        var redisKey = GetRedisKey(key);
+        var redisKey = (RedisKey)GetRedisKey(key);
         var snapshotJson = JsonSerializer.Serialize(snapshot, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
         var ttlMs = (long)ttl.TotalMilliseconds;
 
-        var result = await _db.ScriptEvaluateAsync(
-            CompleteScript,
-            new RedisKey[] { redisKey },
-            new RedisValue[] { fingerprint.Value, snapshotJson, ttlMs });
+        var result = await _completeLua!.EvaluateAsync(_db, new
+        {
+            key = redisKey,
+            fingerprint = fingerprint.Value,
+            snapshot_json = snapshotJson,
+            ttl_ms = ttlMs
+        });
 
         string? status = (string?)result;
 
@@ -240,14 +246,30 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
 
-        if (_ownMultiplexer)
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (disposing && _ownMultiplexer)
         {
             _multiplexer.Dispose();
         }
+    }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
         _disposed = true;
+
+        if (_ownMultiplexer)
+        {
+            await _multiplexer.DisposeAsync();
+        }
         GC.SuppressFinalize(this);
     }
 }
