@@ -139,6 +139,32 @@ builder.Services.AddSingleton<IIdempotencyStore>(sp =>
     new PostgresIdempotencyStore(new PostgresIdempotencyStoreOptions { ConnectionString = "..." }));
 ```
 
+## Benchmarks
+
+The solution includes a BenchmarkDotNet project to measure performance of core components.
+
+### Running Benchmarks
+To run the benchmarks, use the following command:
+```bash
+dotnet run -c Release --project benchmarks/IdempotencyKey.Benchmarks
+```
+
+This will run benchmarks for:
+- **Fingerprinting**: Hashing request bodies of various sizes (1KB, 16KB, 256KB) and computing the full request fingerprint.
+- **Store Operations**: Performance of `TryBeginAsync` (Acquire/Replay) and `CompleteAsync` using the `MemoryIdempotencyStore`.
+
+### Concurrency Smoke Test
+To verify concurrency correctness (ensure exactly-once execution under load), run the lightweight smoke test:
+```bash
+dotnet run -c Release --project benchmarks/IdempotencyKey.Benchmarks -- smoke
+```
+This fires 100 parallel requests with the same key and asserts that only one is executed.
+
+## Performance Notes
+
+- **Max Snapshot Size**: The library limits the size of the response body stored in the snapshot to avoid bloating the storage provider. The default is **256 KB**. Responses larger than this will result in an error (or truncated/placeholder behavior depending on configuration).
+- **Body Hashing**: The default hasher computes SHA-256 over the entire request body to ensure collision resistance. There is currently no upper limit on the request body size for hashing, so extremely large bodies will impact CPU/latency. Use typical API payload sizes (e.g., < 1MB) for best performance.
+
 ## How to Test
 
 You can verify the behavior using PowerShell or curl.
@@ -180,7 +206,7 @@ curl -v -X POST https://localhost:7146/payments \
   -d '{"amount": 10}'
 
 # 3. Conflict (Same Key, Different Body) -> Should return 409 Conflict
-curl -v -X POST hhttps://localhost:7146/payments \
+curl -v -X POST https://localhost:7146/payments \
   -H "Idempotency-Key: key1" \
   -H "Content-Type: application/json" \
   -d '{"amount": 20}'

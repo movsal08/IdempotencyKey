@@ -1,13 +1,22 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RootNamespace>Benchmarks</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IdempotencyKey.Core\IdempotencyKey.Core.csproj" />
+    <ProjectReference Include="..\..\src\IdempotencyKey.Store.Memory\IdempotencyKey.Store.Memory.csproj" />
+    <ProjectReference Include="..\..\src\IdempotencyKey.Store.Postgres\IdempotencyKey.Store.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\IdempotencyKey.Store.Redis\IdempotencyKey.Store.Redis.csproj" />
+  </ItemGroup>
+
 </Project>
