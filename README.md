@@ -150,15 +150,15 @@ $headers = @{ 'Idempotency-Key' = 'test-key-1' }
 $body = '{ "amount": 100, "currency": "USD" }'
 
 # First Request -> 200 OK (Executed)
-Invoke-RestMethod -Method Post -Uri http://localhost:5000/payments -Headers $headers -ContentType 'application/json' -Body $body
+Invoke-RestMethod -Method Post -Uri https://localhost:7146/payments -Headers $headers -ContentType 'application/json' -Body $body
 
 # Second Request (Same Body) -> 200 OK (Replayed, same result)
-Invoke-RestMethod -Method Post -Uri http://localhost:5000/payments -Headers $headers -ContentType 'application/json' -Body $body
+Invoke-RestMethod -Method Post -Uri https://localhost:7146/payments -Headers $headers -ContentType 'application/json' -Body $body
 
 # Third Request (Different Body) -> 409 Conflict
 $body2 = '{ "amount": 200, "currency": "USD" }'
 try {
-    Invoke-RestMethod -Method Post -Uri http://localhost:5000/payments -Headers $headers -ContentType 'application/json' -Body $body2
+    Invoke-RestMethod -Method Post -Uri https://localhost:7146/payments -Headers $headers -ContentType 'application/json' -Body $body2
 } catch {
     Write-Host "Conflict: $($_.Exception.Response.StatusCode)"
 }
@@ -168,19 +168,19 @@ try {
 
 ```bash
 # 1. First Request
-curl -v -X POST http://localhost:5000/payments \
+curl -v -X POST https://localhost:7146/payments \
   -H "Idempotency-Key: key1" \
   -H "Content-Type: application/json" \
   -d '{"amount": 10}'
 
 # 2. Replay (Same Key, Same Body) -> Should return 200 OK (Cached)
-curl -v -X POST http://localhost:5000/payments \
+curl -v -X POST https://localhost:7146/payments \
   -H "Idempotency-Key: key1" \
   -H "Content-Type: application/json" \
   -d '{"amount": 10}'
 
 # 3. Conflict (Same Key, Different Body) -> Should return 409 Conflict
-curl -v -X POST http://localhost:5000/payments \
+curl -v -X POST hhttps://localhost:7146/payments \
   -H "Idempotency-Key: key1" \
   -H "Content-Type: application/json" \
   -d '{"amount": 20}'
