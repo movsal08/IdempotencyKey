@@ -6,7 +6,7 @@ using NpgsqlTypes;
 
 namespace IdempotencyKey.Store.Postgres;
 
-public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
+public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDisposable
 {
     private readonly PostgresIdempotencyStoreOptions _options;
     private readonly NpgsqlDataSource _dataSource;
@@ -339,12 +339,29 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable
 
     public void Dispose()
     {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
         if (_disposed) return;
         _disposed = true;
 
-        if (_ownsDataSource && _dataSource is IDisposable d)
+        if (disposing && _ownsDataSource && _dataSource is IDisposable d)
         {
             d.Dispose();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_ownsDataSource)
+        {
+            await _dataSource.DisposeAsync();
         }
         GC.SuppressFinalize(this);
     }
