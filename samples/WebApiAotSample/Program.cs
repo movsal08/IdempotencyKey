@@ -4,6 +4,7 @@ using IdempotencyKey.Core;
 using IdempotencyKey.Store.Memory;
 
 var builder = WebApplication.CreateSlimBuilder(args);
+builder.WebHost.UseKestrelHttpsConfiguration();
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
