@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IdempotencyKey.AspNetCore\IdempotencyKey.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\IdempotencyKey.Store.Memory\IdempotencyKey.Store.Memory.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

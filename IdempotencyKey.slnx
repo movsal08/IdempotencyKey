@@ -1,0 +1,27 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/IdempotencyKey.Benchmarks/IdempotencyKey.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/MvcControllerSample/MvcControllerSample.csproj" />
+    <Project Path="samples/WebApiAotSample/WebApiAotSample.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/IdempotencyKey.AspNetCore/IdempotencyKey.AspNetCore.csproj" />
+    <Project Path="src/IdempotencyKey.Core/IdempotencyKey.Core.csproj" />
+    <Project Path="src/IdempotencyKey.Store.Memory/IdempotencyKey.Store.Memory.csproj" />
+    <Project Path="src/IdempotencyKey.Store.Postgres/IdempotencyKey.Store.Postgres.csproj" />
+    <Project Path="src/IdempotencyKey.Store.Redis/IdempotencyKey.Store.Redis.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IdempotencyKey.AspNetCore.Tests/IdempotencyKey.AspNetCore.Tests.csproj" />
+    <Project Path="tests/IdempotencyKey.Store.Postgres.Tests/IdempotencyKey.Store.Postgres.Tests.csproj" />
+    <Project Path="tests/IdempotencyKey.Store.Redis.Tests/IdempotencyKey.Store.Redis.Tests.csproj" />
+    <Project Path="tests/IdempotencyKey.Tests/IdempotencyKey.Tests.csproj" />
+  </Folder>
+</Solution>
