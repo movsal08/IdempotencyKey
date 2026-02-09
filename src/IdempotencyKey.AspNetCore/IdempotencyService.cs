@@ -98,7 +98,18 @@ public class IdempotencyService
             httpContext.Request.Body.Position = 0;
             using var memoryStream = new MemoryStream();
             await httpContext.Request.Body.CopyToAsync(memoryStream, httpContext.RequestAborted);
-            bodyHash = _hasher.Hash(memoryStream.ToArray());
+            var bodyBytes = memoryStream.ToArray();
+
+            // Safety check: If Content-Length > 0 but we read 0 bytes, the body was likely already consumed (e.g. by Minimal API model binding)
+            // before the filter ran. This happens if app.UseIdempotencyKey() is not used to enable buffering early.
+            if (httpContext.Request.ContentLength > 0 && bodyBytes.Length == 0)
+            {
+                throw new InvalidOperationException("Idempotency key requires the request body to be buffered, but it appears to be already consumed. " +
+                                                    "If you are using Minimal API model binding, ensure you call 'app.UseIdempotencyKey()' in your application startup " +
+                                                    "to enable buffering before the endpoint executes.");
+            }
+
+            bodyHash = _hasher.Hash(bodyBytes);
             httpContext.Request.Body.Position = 0;
         }
 

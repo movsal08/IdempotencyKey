@@ -8,6 +8,7 @@
     <Project Path="benchmarks/IdempotencyKey.Benchmarks/IdempotencyKey.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/MvcControllerSample/MvcControllerSample.csproj" />
     <Project Path="samples/WebApiAotSample/WebApiAotSample.csproj" />
   </Folder>
   <Folder Name="/src/">
