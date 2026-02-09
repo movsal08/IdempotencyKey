@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>Redis storage provider for IdempotencyKey library.</Description>
+    <PackageId>IdempotencyKey.Store.Redis</PackageId>
   </PropertyGroup>
 
   <ItemGroup>
