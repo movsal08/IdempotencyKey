@@ -7,7 +7,7 @@ namespace IdempotencyKey.Store.Redis.Tests;
 
 public class RedisStoreTests : IAsyncLifetime
 {
-    private readonly RedisContainer _redisContainer = new RedisBuilder().Build();
+    private readonly RedisContainer _redisContainer = new RedisBuilder("redis:7.2").Build();
     private RedisIdempotencyStore _store = null!;
     private IdempotencyPolicy _policy = new()
     {
