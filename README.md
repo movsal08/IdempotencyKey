@@ -5,7 +5,7 @@
 **Idempotency for ASP.NET Core, designed for reliability, clarity, and AOT performance.**
 
 [![License](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
-[![.NET](https://img.shields.io/badge/.NET-8%2B-0078D4.svg)](global.json)
+[![.NET](https://img.shields.io/badge/.NET-10%2B-0078D4.svg)](global.json)
 [![Status](https://img.shields.io/badge/Status-Active-00B894.svg)](README.md)
 
 </div>
