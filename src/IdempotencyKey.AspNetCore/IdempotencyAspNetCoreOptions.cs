@@ -7,6 +7,8 @@ public class IdempotencyAspNetCoreOptions : IdempotencyKeyOptions
 {
     private const string UnreservedChars = "-._~";
 
+    private const string ConflictTypeUri = "https://tools.ietf.org/html/rfc7231#section-6.5.8";
+
     /// <summary>
     /// Function to determine the scope for the idempotency key. Defaults to "default".
     /// </summary>
@@ -66,4 +68,33 @@ public class IdempotencyAspNetCoreOptions : IdempotencyKeyOptions
 
         return true;
     };
+
+    /// <summary>
+    /// Custom error writer for idempotency failures (validation, conflict, in-flight).
+    /// Use this to return your own error model.
+    /// </summary>
+    public Func<HttpContext, IdempotencyErrorContext, Task> ErrorResponseWriter { get; set; } =
+        static async (httpContext, error) =>
+        {
+            httpContext.Response.StatusCode = error.StatusCode;
+
+            if (error.RetryAfterSeconds.HasValue)
+            {
+                httpContext.Response.Headers["Retry-After"] = ((int)error.RetryAfterSeconds.Value).ToString();
+            }
+
+            if (error.Kind == IdempotencyErrorKind.Conflict)
+            {
+                await httpContext.Response.WriteAsJsonAsync(new
+                {
+                    type = ConflictTypeUri,
+                    title = "Idempotency Conflict",
+                    detail = error.ConflictReason ?? error.Message
+                });
+
+                return;
+            }
+
+            await httpContext.Response.WriteAsync(error.Message);
+        };
 }

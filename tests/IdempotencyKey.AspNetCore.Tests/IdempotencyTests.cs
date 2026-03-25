@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using IdempotencyKey.Core;
 using IdempotencyKey.Store.Memory;
 using Microsoft.AspNetCore.Builder;
@@ -394,5 +395,84 @@ public class IdempotencyTests
 
         var response = await client.PostAsync("/", new StringContent("0123456789"));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Middleware_CustomErrorResponseWriter_IsUsedForValidationError()
+    {
+        using var host = await CreateHost(
+            configureServices: services =>
+            {
+                services.Configure<IdempotencyAspNetCoreOptions>(o =>
+                {
+                    o.ErrorResponseWriter = async (ctx, error) =>
+                    {
+                        ctx.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
+                        await ctx.Response.WriteAsJsonAsync(new
+                        {
+                            code = $"IDEMPOTENCY_{error.Kind}",
+                            message = error.Message
+                        });
+                    };
+                });
+            },
+            configureApp: app =>
+            {
+                app.UseIdempotencyKey();
+                app.UseEndpoints(endpoints =>
+                {
+                    endpoints.MapPost("/", () => "ok").RequireIdempotency();
+                });
+            });
+
+        var client = host.GetTestClient();
+        var response = await client.PostAsync("/", new StringContent("test"));
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("IDEMPOTENCY_Validation", payload.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Middleware_CustomErrorResponseWriter_IsUsedForConflictError()
+    {
+        using var host = await CreateHost(
+            configureServices: services =>
+            {
+                services.Configure<IdempotencyAspNetCoreOptions>(o =>
+                {
+                    o.ErrorResponseWriter = async (ctx, error) =>
+                    {
+                        ctx.Response.StatusCode = error.StatusCode;
+                        await ctx.Response.WriteAsJsonAsync(new
+                        {
+                            code = $"IDEMPOTENCY_{error.Kind}",
+                            reason = error.ConflictReason ?? error.Message
+                        });
+                    };
+                });
+            },
+            configureApp: app =>
+            {
+                app.UseIdempotencyKey();
+                app.UseEndpoints(endpoints =>
+                {
+                    endpoints.MapPost("/", () => "executed").RequireIdempotency();
+                });
+            });
+
+        var client = host.GetTestClient();
+        var key = Guid.NewGuid().ToString("N");
+        client.DefaultRequestHeaders.Add("Idempotency-Key", key);
+
+        await client.PostAsync("/", new StringContent("body1"));
+        var response = await client.PostAsync("/", new StringContent("body2"));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("IDEMPOTENCY_Conflict", payload.RootElement.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("reason").GetString()));
     }
 }

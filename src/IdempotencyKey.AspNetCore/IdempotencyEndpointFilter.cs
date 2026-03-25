@@ -21,12 +21,14 @@ public class IdempotencyEndpointFilter : IEndpointFilter
         var (key, fingerprint, error) = await service.PrepareRequestAsync(context.HttpContext);
         if (error != null)
         {
-            return Results.BadRequest(error);
+            await service.WriteValidationErrorAsync(context.HttpContext, error);
+            return Results.Empty;
         }
 
         if (key == null || fingerprint == null)
         {
-            return Results.BadRequest("Idempotency key error.");
+            await service.WriteValidationErrorAsync(context.HttpContext, "Idempotency key error.");
+            return Results.Empty;
         }
 
         var result = await service.TryBeginAsync(key.Value, fingerprint.Value, settings, context.HttpContext.RequestAborted);

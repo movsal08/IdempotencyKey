@@ -59,8 +59,7 @@ public class IdempotencyService
         var (key, fingerprint, validationError) = await PrepareRequestAsync(httpContext);
         if (validationError != null)
         {
-            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await httpContext.Response.WriteAsync(validationError);
+            await WriteValidationErrorAsync(httpContext, validationError);
             return;
         }
 
@@ -88,6 +87,16 @@ public class IdempotencyService
                 await HandleInFlightAsync(httpContext, key.Value, result, settings);
                 break;
         }
+    }
+
+    public Task WriteValidationErrorAsync(HttpContext httpContext, string message)
+    {
+        return WriteErrorResponseAsync(
+            httpContext,
+            new IdempotencyErrorContext(
+                Kind: IdempotencyErrorKind.Validation,
+                StatusCode: StatusCodes.Status400BadRequest,
+                Message: message));
     }
 
     // Exposed for Filter
@@ -250,10 +259,14 @@ public class IdempotencyService
     {
         if (settings.InFlightMode == InFlightMode.RetryAfter)
         {
-            // Immediate return
-            httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
-            httpContext.Response.Headers["Retry-After"] = ((int)settings.RetryAfterSeconds).ToString();
-            await httpContext.Response.WriteAsync("Request is currently in-flight. Please try again later.");
+            await WriteErrorResponseAsync(
+                httpContext,
+                new IdempotencyErrorContext(
+                    Kind: IdempotencyErrorKind.InFlight,
+                    StatusCode: StatusCodes.Status409Conflict,
+                    Message: "Request is currently in-flight. Please try again later.",
+                    RetryAfterSeconds: settings.RetryAfterSeconds));
+
             return;
         }
 
@@ -287,9 +300,13 @@ public class IdempotencyService
         }
 
         // Timeout reached
-        httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
-        httpContext.Response.Headers["Retry-After"] = ((int)settings.RetryAfterSeconds).ToString();
-        await httpContext.Response.WriteAsync("Request timed out while waiting for in-flight operation.");
+        await WriteErrorResponseAsync(
+            httpContext,
+            new IdempotencyErrorContext(
+                Kind: IdempotencyErrorKind.InFlightTimeout,
+                StatusCode: StatusCodes.Status409Conflict,
+                Message: "Request timed out while waiting for in-flight operation.",
+                RetryAfterSeconds: settings.RetryAfterSeconds));
     }
 
     public async Task ReplaySnapshotAsync(HttpContext httpContext, IdempotencyResponseSnapshot snapshot)
@@ -313,9 +330,13 @@ public class IdempotencyService
 
     public async Task HandleConflictAsync(HttpContext httpContext, string? reason)
     {
-        httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
-        // Do not echo sensitive body implies generic message or structured error.
-        await httpContext.Response.WriteAsJsonAsync(new { type = "https://tools.ietf.org/html/rfc7231#section-6.5.8", title = "Idempotency Conflict", detail = reason ?? "Idempotency key mismatch." });
+        await WriteErrorResponseAsync(
+            httpContext,
+            new IdempotencyErrorContext(
+                Kind: IdempotencyErrorKind.Conflict,
+                StatusCode: StatusCodes.Status409Conflict,
+                Message: "Idempotency key mismatch.",
+                ConflictReason: reason));
     }
 
     public ExecutionSettings ResolveSettings(IdempotencyPolicyMetadata? metadata)
@@ -339,5 +360,10 @@ public class IdempotencyService
     private static bool IsUnsafeHeader(string key)
     {
         return !SafeReplayHeaders.Contains(key);
+    }
+
+    private Task WriteErrorResponseAsync(HttpContext httpContext, IdempotencyErrorContext error)
+    {
+        return _options.ErrorResponseWriter(httpContext, error);
     }
 }

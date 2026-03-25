@@ -24,6 +24,7 @@
   - [Usage Patterns](#usage-patterns)
     - [1. Minimal API (Group)](#1-minimal-api-group)
     - [2. Controllers (Attribute)](#2-controllers-attribute)
+    - [3. Custom Error Model](#3-custom-error-model)
   - [Concepts](#concepts)
     - [Idempotency Key](#idempotency-key)
     - [Fingerprint \& Conflict](#fingerprint--conflict)
@@ -170,6 +171,99 @@ public class PaymentsController : ControllerBase
     }
 }
 ```
+
+### 3. Custom Error Model
+
+If your service has a standard error contract, you can override idempotency error responses globally.
+
+```csharp
+builder.Services.AddIdempotencyKey(options =>
+{
+  options.ErrorResponseWriter = async (httpContext, error) =>
+  {
+    var correlationId = httpContext.TraceIdentifier;
+
+    switch (error.Kind)
+    {
+      case IdempotencyErrorKind.Validation:
+        httpContext.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
+        await httpContext.Response.WriteAsJsonAsync(new
+        {
+          code = "VALIDATION_ERROR",
+          message = error.Message,
+          correlationId
+        });
+        break;
+
+      case IdempotencyErrorKind.Conflict:
+        httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+        await httpContext.Response.WriteAsJsonAsync(new
+        {
+          code = "IDEMPOTENCY_CONFLICT",
+          message = "Request conflicts with a previous use of this key.",
+          reason = error.ConflictReason,
+          correlationId
+        });
+        break;
+
+      case IdempotencyErrorKind.InFlight:
+        httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+        if (error.RetryAfterSeconds.HasValue)
+        {
+          httpContext.Response.Headers["Retry-After"] = ((int)error.RetryAfterSeconds.Value).ToString();
+        }
+
+        await httpContext.Response.WriteAsJsonAsync(new
+        {
+          code = "IDEMPOTENCY_IN_FLIGHT",
+          message = error.Message,
+          retryAfterSeconds = error.RetryAfterSeconds,
+          correlationId
+        });
+        break;
+
+      case IdempotencyErrorKind.InFlightTimeout:
+        httpContext.Response.StatusCode = StatusCodes.Status408RequestTimeout;
+        if (error.RetryAfterSeconds.HasValue)
+        {
+          httpContext.Response.Headers["Retry-After"] = ((int)error.RetryAfterSeconds.Value).ToString();
+        }
+
+        await httpContext.Response.WriteAsJsonAsync(new
+        {
+          code = "IDEMPOTENCY_IN_FLIGHT_TIMEOUT",
+          message = "Timed out while waiting for the original request.",
+          retryAfterSeconds = error.RetryAfterSeconds,
+          correlationId
+        });
+        break;
+
+      default:
+        httpContext.Response.StatusCode = error.StatusCode;
+        await httpContext.Response.WriteAsJsonAsync(new
+        {
+          code = "IDEMPOTENCY_ERROR",
+          message = error.Message,
+          correlationId
+        });
+        break;
+    }
+  };
+});
+```
+
+`error.Kind` values:
+
+- `Validation`
+- `Conflict`
+- `InFlight`
+- `InFlightTimeout`
+
+Notes:
+
+- You can keep default status codes with `httpContext.Response.StatusCode = error.StatusCode`.
+- You can remap any error kind to your own contract and status code policy.
+- `Retry-After` is not automatic in custom mode; set it yourself when needed.
 
 ---
 
