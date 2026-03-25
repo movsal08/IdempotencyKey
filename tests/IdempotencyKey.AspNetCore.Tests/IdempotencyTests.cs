@@ -56,6 +56,49 @@ public class IdempotencyTests
     }
 
     [Fact]
+    public async Task Middleware_KeyTooLong_Returns400()
+    {
+        using var host = await CreateHost(
+            configureServices: services =>
+            {
+                services.Configure<IdempotencyAspNetCoreOptions>(o => o.MaxIdempotencyKeyLength = 8);
+            },
+            configureApp: app =>
+            {
+                app.UseIdempotencyKey();
+                app.UseEndpoints(endpoints =>
+                {
+                    endpoints.MapPost("/", () => "ok").RequireIdempotency();
+                });
+            });
+
+        var client = host.GetTestClient();
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "toolong-key-value");
+
+        var response = await client.PostAsync("/", new StringContent("test"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Middleware_InvalidKeyCharacters_Returns400()
+    {
+        using var host = await CreateHost(configureApp: app =>
+        {
+            app.UseIdempotencyKey();
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapPost("/", () => "ok").RequireIdempotency();
+            });
+        });
+
+        var client = host.GetTestClient();
+        client.DefaultRequestHeaders.Add("Idempotency-Key", "invalid key");
+
+        var response = await client.PostAsync("/", new StringContent("test"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Middleware_WithHeader_AcquiresAndReplays()
     {
         int executionCount = 0;
@@ -290,5 +333,66 @@ public class IdempotencyTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(content, await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Replay_DoesNotIncludeSensitiveHeaders()
+    {
+        int executionCount = 0;
+        using var host = await CreateHost(configureApp: app =>
+        {
+            app.UseIdempotencyKey();
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapPost("/", (HttpContext ctx) =>
+                {
+                    Interlocked.Increment(ref executionCount);
+                    ctx.Response.Headers["Set-Cookie"] = "session=abc";
+                    ctx.Response.Headers["Cache-Control"] = "no-store";
+                    return "ok";
+                }).RequireIdempotency();
+            });
+        });
+
+        var client = host.GetTestClient();
+        var key = Guid.NewGuid().ToString("N");
+        client.DefaultRequestHeaders.Add("Idempotency-Key", key);
+
+        var first = await client.PostAsync("/", new StringContent("test"));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.True(first.Headers.TryGetValues("Set-Cookie", out _));
+        Assert.True(first.Headers.TryGetValues("Cache-Control", out var cacheControlFirst));
+        Assert.Equal("no-store", cacheControlFirst.Single());
+
+        var second = await client.PostAsync("/", new StringContent("test"));
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(1, executionCount);
+        Assert.False(second.Headers.TryGetValues("Set-Cookie", out _));
+        Assert.True(second.Headers.TryGetValues("Cache-Control", out var cacheControlSecond));
+        Assert.Equal("no-store", cacheControlSecond.Single());
+    }
+
+    [Fact]
+    public async Task Middleware_RequestBodyTooLargeForHash_Returns400()
+    {
+        using var host = await CreateHost(
+            configureServices: services =>
+            {
+                services.Configure<IdempotencyAspNetCoreOptions>(o => o.MaxRequestBodyHashBytes = 8);
+            },
+            configureApp: app =>
+            {
+                app.UseIdempotencyKey();
+                app.UseEndpoints(endpoints =>
+                {
+                    endpoints.MapPost("/", () => "ok").RequireIdempotency();
+                });
+            });
+
+        var client = host.GetTestClient();
+        client.DefaultRequestHeaders.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+
+        var response = await client.PostAsync("/", new StringContent("0123456789"));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using IdempotencyKey.Core;
 using IdempotencyKey.Store.Postgres;
+using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
 using Xunit.Abstractions;
@@ -263,5 +264,68 @@ public class PostgresIdempotencyStoreTests : IAsyncLifetime
 
         Assert.Equal(1, acquiredCount);
         Assert.Equal(concurrency - 1, inFlightCount);
+    }
+
+    [Fact]
+    public async Task TryBegin_CorruptedCompletedSnapshot_ReturnsConflict()
+    {
+        if (ShouldSkip()) return;
+
+        var key = new IdempotencyKey.Core.IdempotencyKey("scope1", Guid.NewGuid().ToString());
+        var fingerprint = new Fingerprint("fp_corrupt");
+        var policy = new IdempotencyPolicy
+        {
+            LeaseDuration = TimeSpan.FromSeconds(60),
+            Ttl = TimeSpan.FromMinutes(5)
+        };
+
+        await using (var conn = new NpgsqlConnection(_container!.GetConnectionString()))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO public.idempotency_records (scope, key, fingerprint, state, lease_until_utc, expires_at_utc, created_at_utc, updated_at_utc, snapshot_json)
+                VALUES (@s, @k, @fp, 'completed', @now, @exp, @now, @now, @json::jsonb)", conn);
+            var now = DateTimeOffset.UtcNow;
+            cmd.Parameters.AddWithValue("s", key.Scope);
+            cmd.Parameters.AddWithValue("k", key.Key);
+            cmd.Parameters.AddWithValue("fp", fingerprint.Value);
+            cmd.Parameters.AddWithValue("now", now);
+            cmd.Parameters.AddWithValue("exp", now.AddMinutes(5));
+            cmd.Parameters.AddWithValue("json", "{\"StatusCode\":\"oops\",\"Headers\":{}}");
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var result = await _store!.TryBeginAsync(key, fingerprint, policy, CancellationToken.None);
+
+        Assert.Equal(TryBeginOutcome.Conflict, result.Outcome);
+        Assert.Contains("snapshot", result.ConflictReason!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TryGetCompleted_CorruptedCompletedSnapshot_ReturnsNull()
+    {
+        if (ShouldSkip()) return;
+
+        var key = new IdempotencyKey.Core.IdempotencyKey("scope1", Guid.NewGuid().ToString());
+
+        await using (var conn = new NpgsqlConnection(_container!.GetConnectionString()))
+        {
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO public.idempotency_records (scope, key, fingerprint, state, lease_until_utc, expires_at_utc, created_at_utc, updated_at_utc, snapshot_json)
+                VALUES (@s, @k, @fp, 'completed', @now, @exp, @now, @now, @json::jsonb)", conn);
+            var now = DateTimeOffset.UtcNow;
+            cmd.Parameters.AddWithValue("s", key.Scope);
+            cmd.Parameters.AddWithValue("k", key.Key);
+            cmd.Parameters.AddWithValue("fp", "fp_corrupt");
+            cmd.Parameters.AddWithValue("now", now);
+            cmd.Parameters.AddWithValue("exp", now.AddMinutes(5));
+            cmd.Parameters.AddWithValue("json", "{\"StatusCode\":\"oops\",\"Headers\":{}}");
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        var snapshot = await _store!.TryGetCompletedAsync(key, CancellationToken.None);
+
+        Assert.Null(snapshot);
     }
 }

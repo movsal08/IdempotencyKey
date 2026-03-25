@@ -178,6 +178,7 @@ public class PaymentsController : ControllerBase
 ### Idempotency Key
 
 Clients must send a unique key in the `Idempotency-Key` header (configurable). If the header is missing on a required endpoint, the server returns `400 Bad Request`.
+Keys are validated using RFC3986 unreserved characters (`A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`) with a default max length of **256**.
 
 ### Fingerprint & Conflict
 
@@ -189,6 +190,7 @@ The library computes a SHA-256 fingerprint of the request including:
 - Selected Headers (configurable)
 
 If a client sends the same Key but a **different** body/fingerprint, the server returns `409 Conflict`. This prevents accidental misuse of keys.
+For replay safety, only a safe allowlist of response headers is cached and replayed.
 
 ### In-Flight Requests
 
@@ -229,6 +231,12 @@ builder.Services.AddSingleton<IIdempotencyStore>(sp =>
     new PostgresIdempotencyStore(new PostgresIdempotencyStoreOptions { ConnectionString = "..." }));
 ```
 
+For long-running production workloads, schedule periodic cleanup of expired rows:
+
+```sql
+DELETE FROM public.idempotency_records WHERE expires_at_utc < now();
+```
+
 ---
 
 ## Benchmarks
@@ -261,7 +269,7 @@ This fires 100 parallel requests with the same key and asserts that only one is 
 ## Performance Notes
 
 - **Max Snapshot Size**: The library limits the size of the response body stored in the snapshot to avoid bloating the storage provider. The default is **256 KB**. Responses larger than this will result in an error (or truncated/placeholder behavior depending on configuration).
-- **Body Hashing**: The default hasher computes SHA-256 over the entire request body to ensure collision resistance. There is currently no upper limit on the request body size for hashing, so extremely large bodies will impact CPU/latency. Use typical API payload sizes (e.g., < 1MB) for best performance.
+- **Body Hashing**: The default hasher computes SHA-256 over the entire request body to ensure collision resistance and enforces a configurable max request body size for hashing. The default is **1 MB**.
 
 ---
 

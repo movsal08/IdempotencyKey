@@ -1,4 +1,5 @@
 using IdempotencyKey.Core;
+using StackExchange.Redis;
 using Testcontainers.Redis;
 using Xunit;
 using Xunit.Abstractions;
@@ -225,5 +226,55 @@ public class RedisStoreTests : IAsyncLifetime
         {
             await _store.CompleteAsync(key, fp2, snapshot, _policy.Ttl, CancellationToken.None);
         });
+    }
+
+    [Fact]
+    public async Task TryBegin_CorruptedCompletedSnapshot_ReturnsConflict()
+    {
+        if (_initFailed) { _output.WriteLine($"Skipping test: {_initError}"); return; }
+
+        var key = CreateKey();
+        var fp = CreateFingerprint("hash-corrupted");
+
+        await using var mux = await ConnectionMultiplexer.ConnectAsync(_redisContainer.GetConnectionString());
+        var db = mux.GetDatabase();
+        var redisKey = $"idem:{key.Scope}:{key.Key}";
+
+        await db.HashSetAsync(redisKey, new HashEntry[]
+        {
+            new("state", "completed"),
+            new("fingerprint", fp.Value),
+            new("snapshotJson", "{invalid-json")
+        });
+        await db.KeyExpireAsync(redisKey, TimeSpan.FromMinutes(1));
+
+        var result = await _store.TryBeginAsync(key, fp, _policy, CancellationToken.None);
+
+        Assert.Equal(TryBeginOutcome.Conflict, result.Outcome);
+        Assert.Contains("corrupted", result.ConflictReason!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TryGetCompleted_CorruptedCompletedSnapshot_ReturnsNull()
+    {
+        if (_initFailed) { _output.WriteLine($"Skipping test: {_initError}"); return; }
+
+        var key = CreateKey();
+
+        await using var mux = await ConnectionMultiplexer.ConnectAsync(_redisContainer.GetConnectionString());
+        var db = mux.GetDatabase();
+        var redisKey = $"idem:{key.Scope}:{key.Key}";
+
+        await db.HashSetAsync(redisKey, new HashEntry[]
+        {
+            new("state", "completed"),
+            new("fingerprint", "hash-corrupted"),
+            new("snapshotJson", "{invalid-json")
+        });
+        await db.KeyExpireAsync(redisKey, TimeSpan.FromMinutes(1));
+
+        var snapshot = await _store.TryGetCompletedAsync(key, CancellationToken.None);
+
+        Assert.Null(snapshot);
     }
 }

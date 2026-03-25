@@ -9,6 +9,21 @@ namespace IdempotencyKey.AspNetCore;
 
 public class IdempotencyService
 {
+    private static readonly HashSet<string> SafeReplayHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cache-control",
+        "content-type",
+        "content-encoding",
+        "content-language",
+        "expires",
+        "etag",
+        "vary",
+        "last-modified",
+        "access-control-allow-origin",
+        "access-control-allow-credentials",
+        "access-control-expose-headers"
+    };
+
     private readonly IIdempotencyStore _store;
     private readonly IFingerprintProvider _fingerprintProvider;
     private readonly IRequestBodyHasher _hasher;
@@ -85,6 +100,16 @@ public class IdempotencyService
         }
 
         var keyString = headerValue.ToString();
+        if (keyString.Length > _options.MaxIdempotencyKeyLength)
+        {
+            return (null, null, $"{_options.HeaderName} exceeds maximum length of {_options.MaxIdempotencyKeyLength} characters.");
+        }
+
+        if (!_options.KeyValidator(keyString))
+        {
+            return (null, null, $"{_options.HeaderName} contains invalid characters.");
+        }
+
         var scope = _options.ScopeProvider(httpContext);
         var key = new IdempotencyKeyStruct(scope, keyString);
 
@@ -109,7 +134,14 @@ public class IdempotencyService
                                                     "to enable buffering before the endpoint executes.");
             }
 
-            bodyHash = _hasher.Hash(bodyBytes);
+            try
+            {
+                bodyHash = _hasher.Hash(bodyBytes);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return (null, null, ex.Message);
+            }
             httpContext.Request.Body.Position = 0;
         }
 
@@ -226,7 +258,7 @@ public class IdempotencyService
         }
 
         // Wait Mode
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(httpContext.RequestAborted);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(httpContext.RequestAborted);
         cts.CancelAfter(settings.WaitTimeout);
 
         try
@@ -306,7 +338,6 @@ public class IdempotencyService
 
     private static bool IsUnsafeHeader(string key)
     {
-        var k = key.ToLowerInvariant();
-        return k == "date" || k == "server" || k == "transfer-encoding" || k == "connection" || k == "content-length";
+        return !SafeReplayHeaders.Contains(key);
     }
 }

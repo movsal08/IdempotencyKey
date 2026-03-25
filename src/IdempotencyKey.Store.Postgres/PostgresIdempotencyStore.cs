@@ -147,8 +147,21 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDi
                     IdempotencyResponseSnapshot? snapshot = null;
                     if (!string.IsNullOrEmpty(storedSnapshotJson))
                     {
-                        snapshot = JsonSerializer.Deserialize(storedSnapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+                        try
+                        {
+                            snapshot = JsonSerializer.Deserialize(storedSnapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+                        }
+                        catch (JsonException)
+                        {
+                            return new TryBeginResult(TryBeginOutcome.Conflict, ConflictReason: "Stored snapshot is corrupted.");
+                        }
                     }
+
+                    if (snapshot == null)
+                    {
+                        return new TryBeginResult(TryBeginOutcome.Conflict, ConflictReason: "Stored snapshot is missing or invalid.");
+                    }
+
                     return new TryBeginResult(TryBeginOutcome.AlreadyCompleted, Snapshot: snapshot);
                 }
 
@@ -282,7 +295,14 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDi
             if (state == "completed" && !reader.IsDBNull(1))
             {
                 var json = reader.GetString(1);
-                return JsonSerializer.Deserialize(json, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+                try
+                {
+                    return JsonSerializer.Deserialize(json, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+                }
+                catch (JsonException)
+                {
+                    return null;
+                }
             }
         }
 

@@ -15,16 +15,16 @@ public class Sha256FingerprintProvider : IFingerprintProvider
         // Canonicalize
         // method|route|scope|headerKey=val1,val2|...|bodyHash
         var sb = new StringBuilder();
-        sb.Append(method.ToUpperInvariant()).Append('|');
-        sb.Append(routeTemplate).Append('|');
-        sb.Append(scope).Append('|');
+        sb.Append(Escape(method.ToUpperInvariant())).Append('|');
+        sb.Append(Escape(routeTemplate)).Append('|');
+        sb.Append(Escape(scope)).Append('|');
 
         if (selectedHeaders != null)
         {
-            foreach (var kvp in selectedHeaders.OrderBy(k => k.Key))
+            foreach (var kvp in selectedHeaders.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
             {
-                sb.Append(kvp.Key.ToLowerInvariant()).Append('=');
-                sb.Append(string.Join(',', kvp.Value.OrderBy(v => v)));
+                sb.Append(Escape(kvp.Key.ToLowerInvariant())).Append('=');
+                sb.Append(string.Join(',', kvp.Value.OrderBy(v => v, StringComparer.Ordinal).Select(Escape)));
                 sb.Append('|');
             }
         }
@@ -37,5 +37,15 @@ public class Sha256FingerprintProvider : IFingerprintProvider
         var inputBytes = Encoding.UTF8.GetBytes(sb.ToString());
         var hash = SHA256.HashData(inputBytes);
         return new Fingerprint(Convert.ToHexString(hash));
+    }
+
+    private static string Escape(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        return value.Replace("\\", "\\\\").Replace("|", "\\|").Replace("=", "\\=").Replace(",", "\\,");
     }
 }

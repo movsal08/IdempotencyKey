@@ -18,12 +18,19 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
 
     private readonly ConcurrentDictionary<IdempotencyKeyType, Entry> _store = new();
     private readonly Timer _cleanupTimer;
+    private readonly int _maxEntries;
     private bool _disposed;
 
-    public MemoryIdempotencyStore()
+    public MemoryIdempotencyStore(int maxEntries = 100_000, TimeSpan? cleanupInterval = null)
     {
-        // Cleanup every minute
-        _cleanupTimer = new Timer(Cleanup, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        if (maxEntries <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxEntries), "maxEntries must be greater than zero.");
+        }
+
+        _maxEntries = maxEntries;
+        var interval = cleanupInterval ?? TimeSpan.FromSeconds(30);
+        _cleanupTimer = new Timer(Cleanup, null, interval, interval);
     }
 
     private void Cleanup(object? state)
@@ -31,16 +38,15 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
         if (_disposed) return;
 
         var now = DateTimeOffset.UtcNow;
-        // Cast to ICollection to access atomic Remove(KeyValuePair) which ensures we only remove if the value matches
-        var collection = (ICollection<KeyValuePair<IdempotencyKeyType, Entry>>)_store;
-
         foreach (var kvp in _store)
         {
             if (kvp.Value.ExpiresAtUtc < now)
             {
-                collection.Remove(kvp);
+                _store.TryRemove(kvp.Key, out _);
             }
         }
+
+        EvictOverflow();
     }
 
     public Task<TryBeginResult> TryBeginAsync(IdempotencyKeyType key, Fingerprint fingerprint, IdempotencyPolicy policy, CancellationToken ct)
@@ -130,6 +136,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
 
                 if (_store.TryAdd(key, newEntry))
                 {
+                    EvictOverflow();
                     return Task.FromResult(new TryBeginResult(TryBeginOutcome.Acquired));
                 }
                 else
@@ -155,10 +162,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
                 }
 
                 var now = DateTimeOffset.UtcNow;
-
-                // Update snapshot metadata
-                snapshot.CreatedAtUtc = now;
-                snapshot.ExpiresAtUtc = now.Add(ttl);
+                var completedSnapshot = CloneSnapshotWithMetadata(snapshot, now, now.Add(ttl));
 
                 var completedEntry = new Entry
                 {
@@ -166,7 +170,7 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
                     State = IdempotencyEntryState.Completed,
                     LeaseUntilUtc = DateTimeOffset.MinValue,
                     ExpiresAtUtc = now.Add(ttl),
-                    Snapshot = snapshot
+                    Snapshot = completedSnapshot
                 };
 
                 if (_store.TryUpdate(key, completedEntry, currentEntry))
@@ -177,30 +181,30 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
             }
             else
             {
-                // Entry gone. Recreate as completed.
-                var now = DateTimeOffset.UtcNow;
-
-                // Update snapshot metadata
-                snapshot.CreatedAtUtc = now;
-                snapshot.ExpiresAtUtc = now.Add(ttl);
-
-                var completedEntry = new Entry
-                {
-                    Fingerprint = fingerprint,
-                    State = IdempotencyEntryState.Completed,
-                    LeaseUntilUtc = DateTimeOffset.MinValue,
-                    ExpiresAtUtc = now.Add(ttl),
-                    Snapshot = snapshot
-                };
-                if (_store.TryAdd(key, completedEntry))
-                {
-                    break;
-                }
-                // Retry if add failed
+                throw new InvalidOperationException("Idempotency entry was not found during completion.");
             }
         }
 
         return Task.CompletedTask;
+    }
+
+    private static IdempotencyResponseSnapshot CloneSnapshotWithMetadata(
+        IdempotencyResponseSnapshot snapshot,
+        DateTimeOffset createdAtUtc,
+        DateTimeOffset expiresAtUtc)
+    {
+        return new IdempotencyResponseSnapshot
+        {
+            StatusCode = snapshot.StatusCode,
+            ContentType = snapshot.ContentType,
+            Headers = snapshot.Headers.ToDictionary(
+                kvp => kvp.Key,
+                kvp => kvp.Value.ToArray(),
+                StringComparer.OrdinalIgnoreCase),
+            Body = snapshot.Body?.ToArray(),
+            CreatedAtUtc = createdAtUtc,
+            ExpiresAtUtc = expiresAtUtc
+        };
     }
 
     public Task<IdempotencyResponseSnapshot?> TryGetCompletedAsync(IdempotencyKeyType key, CancellationToken ct)
@@ -228,5 +232,25 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
         _cleanupTimer.Dispose();
         _disposed = true;
         GC.SuppressFinalize(this);
+    }
+
+    private void EvictOverflow()
+    {
+        var overflow = _store.Count - _maxEntries;
+        if (overflow <= 0)
+        {
+            return;
+        }
+
+        var candidates = _store
+            .OrderBy(static kvp => kvp.Value.ExpiresAtUtc)
+            .Take(overflow)
+            .Select(static kvp => kvp.Key)
+            .ToArray();
+
+        foreach (var key in candidates)
+        {
+            _store.TryRemove(key, out _);
+        }
     }
 }

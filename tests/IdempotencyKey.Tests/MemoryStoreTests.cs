@@ -77,6 +77,35 @@ public class MemoryStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task CompleteAsync_DoesNotMutateInputSnapshot()
+    {
+        await _store.TryBeginAsync(_key, _fingerprint, _policy, CancellationToken.None);
+
+        var snapshot = new IdempotencyResponseSnapshot
+        {
+            StatusCode = 200,
+            CreatedAtUtc = default,
+            ExpiresAtUtc = default
+        };
+
+        await _store.CompleteAsync(_key, _fingerprint, snapshot, _policy.Ttl, CancellationToken.None);
+
+        Assert.Equal(default, snapshot.CreatedAtUtc);
+        Assert.Equal(default, snapshot.ExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_WhenEntryMissing_Throws()
+    {
+        var snapshot = new IdempotencyResponseSnapshot { StatusCode = 200 };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await _store.CompleteAsync(_key, _fingerprint, snapshot, _policy.Ttl, CancellationToken.None);
+        });
+    }
+
+    [Fact]
     public async Task TryBegin_AfterLeaseExpires_ReturnsAcquired()
     {
         var shortPolicy = new IdempotencyPolicy

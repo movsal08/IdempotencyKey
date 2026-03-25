@@ -16,17 +16,25 @@ public class RequestBodyHasherTests
     }
 
     [Fact]
-    public void Hash_LargeBody_HashesFullBody_NoCollisions()
+    public void Hash_BodyExceedingLimit_Throws()
     {
         var hasher = new DefaultRequestBodyHasher(5);
         var body = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }; // Length 10
+
+        var ex = Assert.Throws<InvalidOperationException>(() => hasher.Hash(body));
+        Assert.Contains("exceeded maximum hash size", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Hash_BodiesWithinLimit_HashesFullBody_NoCollisions()
+    {
+        var hasher = new DefaultRequestBodyHasher(32);
+        var body = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 
         var hash1 = hasher.Hash(body);
 
         // Create another body with same prefix but different suffix (length same)
         var body2 = new byte[] { 1, 2, 3, 4, 5, 0, 0, 0, 0, 0 }; // Length 10
-        // Expected: Hash should be DIFFERENT because we hash full body now
-
         var hash2 = hasher.Hash(body2);
 
         Assert.NotEqual(hash1, hash2);

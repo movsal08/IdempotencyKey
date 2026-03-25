@@ -186,7 +186,21 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDispo
             case "completed":
                 var snapshotJson = (string?)resultArray[1];
                 if (snapshotJson is null) throw new InvalidOperationException("Snapshot json is null.");
-                var snapshot = JsonSerializer.Deserialize(snapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+                IdempotencyResponseSnapshot? snapshot;
+                try
+                {
+                    snapshot = JsonSerializer.Deserialize(snapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+                }
+                catch (JsonException)
+                {
+                    return new TryBeginResult(TryBeginOutcome.Conflict, ConflictReason: "Stored snapshot is corrupted.");
+                }
+
+                if (snapshot == null)
+                {
+                    return new TryBeginResult(TryBeginOutcome.Conflict, ConflictReason: "Stored snapshot is missing or invalid.");
+                }
+
                 return new TryBeginResult(TryBeginOutcome.AlreadyCompleted, Snapshot: snapshot);
             case "inflight":
                 var retryAfterMs = (long)resultArray[1];
@@ -233,7 +247,14 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDispo
 
         if (state == "completed" && !string.IsNullOrEmpty(snapshotJson))
         {
-            return JsonSerializer.Deserialize(snapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+            try
+            {
+                return JsonSerializer.Deserialize(snapshotJson, IdempotencyJsonContext.Default.IdempotencyResponseSnapshot);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
 
         return null;
