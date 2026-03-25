@@ -1,6 +1,11 @@
 name: Manual Publish to GitHub Packages and NuGet.org
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to publish (example: 1.0.0 or 1.1.0-preview.1)"
+        required: true
+        type: string
 
 jobs:
   build-and-publish:
@@ -31,15 +36,10 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            LATEST_TAG=$(git tag --list "v*" --sort=-v:refname | head -n 1)
-            if [[ -z "$LATEST_TAG" ]]; then
-              VERSION="0.1.0-preview.${GITHUB_RUN_NUMBER}"
-            else
-              VERSION="${LATEST_TAG#v}-preview.${GITHUB_RUN_NUMBER}"
-            fi
+          VERSION="${{ inputs.version }}"
+          if [[ -z "$VERSION" ]]; then
+            echo "Version input is required. Example: 1.0.0"
+            exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
