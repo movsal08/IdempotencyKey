@@ -14,14 +14,38 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
-      - name: Build and Pack
-        run: dotnet pack --configuration Release
+      - name: Restore
+        run: dotnet restore IdempotencyKey.slnx
+
+      - name: Build
+        run: dotnet build IdempotencyKey.slnx --configuration Release --no-restore
+
+      - name: Determine package version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            LATEST_TAG=$(git tag --list "v*" --sort=-v:refname | head -n 1)
+            if [[ -z "$LATEST_TAG" ]]; then
+              VERSION="0.1.0-preview.${GITHUB_RUN_NUMBER}"
+            else
+              VERSION="${LATEST_TAG#v}-preview.${GITHUB_RUN_NUMBER}"
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Pack
+        run: dotnet pack IdempotencyKey.slnx --configuration Release --no-build -p:ContinuousIntegrationBuild=true -p:Version=${{ steps.version.outputs.version }}
 
       - name: Publish to GitHub Packages
-        run: dotnet nuget push "**/bin/Release/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+        run: dotnet nuget push "src/**/bin/Release/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
