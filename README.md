@@ -88,9 +88,24 @@ sequenceDiagram
 
 **Installation**
 
-(NuGet package coming soon)
+Install the ASP.NET Core integration package:
 
-For now, reference the project or copy the source.
+```bash
+dotnet add package IdempotencyKey.AspNetCore
+```
+
+Then install one storage provider:
+
+```bash
+# In-memory (dev/test)
+dotnet add package IdempotencyKey.Store.Memory
+
+# Redis
+dotnet add package IdempotencyKey.Store.Redis
+
+# Postgres
+dotnet add package IdempotencyKey.Store.Postgres
+```
 
 **Minimal API (Per-Endpoint)**
 
