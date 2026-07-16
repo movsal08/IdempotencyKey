@@ -36,6 +36,13 @@ public class IdempotencyAspNetCoreOptions : IdempotencyKeyOptions
     public int MaxIdempotencyKeyLength { get; set; } = 256;
 
     /// <summary>
+    /// When true, only successful responses (HTTP status &lt; 400) are cached. Non-success
+    /// responses release the in-flight entry instead of being stored, so a retry re-executes
+    /// the request rather than replaying the failure. Defaults to false (cache every response).
+    /// </summary>
+    public bool CacheSuccessResponsesOnly { get; set; }
+
+    /// <summary>
     /// Maximum request body size that will be hashed for fingerprinting.
     /// Requests exceeding this value fail with 400.
     /// </summary>
