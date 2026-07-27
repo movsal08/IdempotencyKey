@@ -1,6 +1,7 @@
 using IdempotencyKey.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace IdempotencyKey.AspNetCore;
 
@@ -16,6 +17,16 @@ public class IdempotencyEndpointFilter : IEndpointFilter
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var service = context.HttpContext.RequestServices.GetRequiredService<IdempotencyService>();
+        var options = context.HttpContext.RequestServices
+            .GetRequiredService<IOptions<IdempotencyAspNetCoreOptions>>().Value;
+
+        // Same method gate as the middleware: read methods pass straight through, even when the
+        // route group / controller opted in wholesale.
+        if (!IdempotencyMethodGate.IsApplicable(context.HttpContext.Request.Method, _metadata, options))
+        {
+            return await next(context);
+        }
+
         var settings = service.ResolveSettings(_metadata);
 
         var (key, fingerprint, error) = await service.PrepareRequestAsync(context.HttpContext);

@@ -32,17 +32,21 @@ public class IdempotencyMiddleware
 
         if (metadata != null)
         {
-            // Explicit opt-in via metadata
-            // Ensure buffering is enabled even if enforced by filter, because filter runs after model binding
-            context.Request.EnableBuffering();
-
-            // If enforced by filter, middleware should skip to avoid double execution
-            if (!metadata.EnforcedByFilter)
+            // Explicit opt-in via metadata, but still gated on the HTTP method: a class-level
+            // [RequireIdempotency] must not demand a key on the controller's GET actions.
+            if (IdempotencyMethodGate.IsApplicable(context.Request.Method, metadata, options))
             {
-                shouldRun = true;
+                // Ensure buffering is enabled even if enforced by filter, because filter runs after model binding
+                context.Request.EnableBuffering();
+
+                // If enforced by filter, middleware should skip to avoid double execution
+                if (!metadata.EnforcedByFilter)
+                {
+                    shouldRun = true;
+                }
             }
         }
-        else if (options.Predicate(context))
+        else if (IdempotencyMethodGate.MatchesGlobalPredicate(context, options))
         {
             context.Request.EnableBuffering();
             shouldRun = true;
