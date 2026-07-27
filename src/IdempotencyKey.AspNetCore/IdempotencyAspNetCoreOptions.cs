@@ -15,15 +15,27 @@ public class IdempotencyAspNetCoreOptions : IdempotencyKeyOptions
     public Func<HttpContext, string> ScopeProvider { get; set; } = _ => IdempotencyScopes.Default;
 
     /// <summary>
-    /// Predicate to determine if idempotency should be applied to a request globally.
-    /// Defaults to true for POST, PUT, PATCH, DELETE.
-    /// Note: Endpoint specific metadata overrides this.
+    /// HTTP methods idempotency applies to. This gate is enforced for <em>every</em> opt-in path —
+    /// including endpoints marked with <c>[RequireIdempotency]</c> or <c>RequireIdempotency()</c> —
+    /// so a class-level attribute on a controller never forces an <c>Idempotency-Key</c> header onto
+    /// its GET/HEAD/OPTIONS actions. Defaults to POST, PUT, PATCH, DELETE.
+    /// Per-endpoint overrides are available via <see cref="IdempotencyPolicyMetadata.Methods"/>.
     /// </summary>
-    public Func<HttpContext, bool> Predicate { get; set; } = req =>
-        HttpMethods.IsPost(req.Request.Method) ||
-        HttpMethods.IsPut(req.Request.Method) ||
-        HttpMethods.IsPatch(req.Request.Method) ||
-        HttpMethods.IsDelete(req.Request.Method);
+    public HashSet<string> ApplicableMethods { get; set; } = new(StringComparer.OrdinalIgnoreCase)
+    {
+        HttpMethods.Post,
+        HttpMethods.Put,
+        HttpMethods.Patch,
+        HttpMethods.Delete
+    };
+
+    /// <summary>
+    /// Predicate to determine if idempotency should be applied to a request globally, for endpoints
+    /// that carry no idempotency metadata. Defaults to <see cref="ApplicableMethods"/> membership.
+    /// Note: endpoint specific metadata overrides this, but never bypasses
+    /// <see cref="ApplicableMethods"/>.
+    /// </summary>
+    public Func<HttpContext, bool>? Predicate { get; set; }
 
     /// <summary>
     /// List of headers to include in the fingerprint.
