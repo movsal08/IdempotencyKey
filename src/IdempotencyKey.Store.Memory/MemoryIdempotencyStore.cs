@@ -207,6 +207,23 @@ public class MemoryIdempotencyStore : IIdempotencyStore, IDisposable
         };
     }
 
+    public Task ReleaseAsync(IdempotencyKeyType key, Fingerprint fingerprint, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        // Only remove an entry that is still in-flight and owned by this fingerprint.
+        // A completed entry (or one re-acquired by another fingerprint) must be left intact.
+        if (_store.TryGetValue(key, out var entry)
+            && entry.State == IdempotencyEntryState.InFlight
+            && entry.Fingerprint.Value == fingerprint.Value)
+        {
+            ((ICollection<KeyValuePair<IdempotencyKeyType, Entry>>)_store)
+                .Remove(new KeyValuePair<IdempotencyKeyType, Entry>(key, entry));
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task<IdempotencyResponseSnapshot?> TryGetCompletedAsync(IdempotencyKeyType key, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

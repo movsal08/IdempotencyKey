@@ -202,7 +202,22 @@ public class IdempotencyService
         catch (Exception)
         {
             httpContext.Response.Body = originalBodyStream;
+
+            await SafeReleaseAsync(key, fingerprint);
+
             throw;
+        }
+    }
+
+    private async Task SafeReleaseAsync(IdempotencyKeyStruct key, Fingerprint fingerprint)
+    {
+        try
+        {
+            await _store.ReleaseAsync(key, fingerprint, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to release in-flight idempotency entry after a failed request.");
         }
     }
 
@@ -232,6 +247,12 @@ public class IdempotencyService
             if (errorSnapshot.Body != null)
                 await responseBuffer.WriteAsync(errorSnapshot.Body);
 
+            return;
+        }
+
+        if (_options.CacheSuccessResponsesOnly && httpContext.Response.StatusCode >= 400)
+        {
+            await SafeReleaseAsync(key, fingerprint);
             return;
         }
 
