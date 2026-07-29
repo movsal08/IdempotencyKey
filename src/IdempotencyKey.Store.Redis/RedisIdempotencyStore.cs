@@ -80,24 +80,8 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDispo
         return 'ok'
     ";
 
-    private const string ReleaseScript = @"
-        local key = @key
-        local fingerprint = @fingerprint
-
-        local state = redis.call('HGET', key, 'state')
-        if state == 'inflight' then
-            local stored_fingerprint = redis.call('HGET', key, 'fingerprint')
-            if stored_fingerprint == fingerprint then
-                redis.call('DEL', key)
-                return 'released'
-            end
-        end
-        return 'noop'
-    ";
-
     private static LuaScript? _tryBeginLua;
     private static LuaScript? _completeLua;
-    private static LuaScript? _releaseLua;
 
     public RedisIdempotencyStore(RedisIdempotencyStoreOptions options)
     {
@@ -161,10 +145,6 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDispo
         if (_completeLua == null)
         {
             _completeLua = LuaScript.Prepare(CompleteScript);
-        }
-        if (_releaseLua == null)
-        {
-            _releaseLua = LuaScript.Prepare(ReleaseScript);
         }
     }
 
@@ -253,19 +233,6 @@ public class RedisIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDispo
         {
             throw new InvalidOperationException("Fingerprint mismatch during completion.");
         }
-    }
-
-    public async Task ReleaseAsync(IdempotencyKey.Core.IdempotencyKey key, Fingerprint fingerprint, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-
-        var redisKey = (RedisKey)GetRedisKey(key);
-
-        await _releaseLua!.EvaluateAsync(_db, new
-        {
-            key = redisKey,
-            fingerprint = fingerprint.Value
-        });
     }
 
     public async Task<IdempotencyResponseSnapshot?> TryGetCompletedAsync(IdempotencyKey.Core.IdempotencyKey key, CancellationToken ct)

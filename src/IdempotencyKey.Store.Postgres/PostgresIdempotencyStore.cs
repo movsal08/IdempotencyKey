@@ -266,24 +266,6 @@ public class PostgresIdempotencyStore : IIdempotencyStore, IDisposable, IAsyncDi
         }
     }
 
-    public async Task ReleaseAsync(IdempotencyKey.Core.IdempotencyKey key, Fingerprint fingerprint, CancellationToken ct)
-    {
-        await using var conn = await _dataSource.OpenConnectionAsync(ct);
-
-        const string sql = @"
-            DELETE FROM {0}
-            WHERE scope = @s AND key = @k AND state = 'inflight' AND fingerprint = @fp";
-
-        var formattedSql = string.Format(sql, GetTableName());
-
-        using var cmd = CreateCommand(formattedSql, conn);
-        cmd.Parameters.AddWithValue("s", key.Scope);
-        cmd.Parameters.AddWithValue("k", key.Key);
-        cmd.Parameters.AddWithValue("fp", fingerprint.Value);
-
-        await cmd.ExecuteNonQueryAsync(ct);
-    }
-
     public async Task<IdempotencyResponseSnapshot?> TryGetCompletedAsync(IdempotencyKey.Core.IdempotencyKey key, CancellationToken ct)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(ct);

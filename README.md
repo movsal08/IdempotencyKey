@@ -24,8 +24,7 @@
   - [Usage Patterns](#usage-patterns)
     - [1. Minimal API (Group)](#1-minimal-api-group)
     - [2. Controllers (Attribute)](#2-controllers-attribute)
-    - [3. Applicable HTTP Methods](#3-applicable-http-methods)
-    - [4. Custom Error Model](#4-custom-error-model)
+    - [3. Custom Error Model](#3-custom-error-model)
   - [Concepts](#concepts)
     - [Idempotency Key](#idempotency-key)
     - [Fingerprint \& Conflict](#fingerprint--conflict)
@@ -188,45 +187,7 @@ public class PaymentsController : ControllerBase
 }
 ```
 
-The attribute can also be placed on the controller class to cover every action at once. Idempotency
-is applied only to state-changing methods, so read actions on the same controller are untouched:
-
-```csharp
-[ApiController]
-[Route("[controller]")]
-[RequireIdempotency(TtlSeconds = 60)]
-public class PaymentsController : ControllerBase
-{
-    [HttpPost] public IActionResult Create(...) => Ok();  // requires Idempotency-Key
-    [HttpGet]  public IActionResult List()      => Ok();  // untouched, no header needed
-}
-```
-
-### 3. Applicable HTTP Methods
-
-By default idempotency applies to `POST`, `PUT`, `PATCH` and `DELETE` — on every opt-in path
-(global predicate, attribute, and minimal-API convention alike). Narrow or widen it globally:
-
-```csharp
-builder.Services.AddIdempotencyKey(options =>
-{
-    options.ApplicableMethods = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "POST", "PUT", "DELETE"
-    };
-});
-```
-
-Or per endpoint:
-
-```csharp
-[RequireIdempotency(Methods = new[] { "POST" })]           // controllers
-app.MapGet("/report", ...).RequireIdempotency(o => o.Methods = ["GET"]); // minimal API
-```
-
-An empty collection means "no method restriction" for that endpoint.
-
-### 4. Custom Error Model
+### 3. Custom Error Model
 
 If your service has a standard error contract, you can override idempotency error responses globally.
 
