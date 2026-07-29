@@ -159,7 +159,7 @@ public class IdempotencyService
         {
             if (httpContext.Request.Headers.TryGetValue(h, out var val))
             {
-                selectedHeaders[h] = val.Where(x => x != null).Select(x => x!).ToArray();
+                selectedHeaders[h] = FilterHeaderValues(val);
             }
         }
 
@@ -202,22 +202,7 @@ public class IdempotencyService
         catch (Exception)
         {
             httpContext.Response.Body = originalBodyStream;
-
-            await SafeReleaseAsync(key, fingerprint);
-
             throw;
-        }
-    }
-
-    private async Task SafeReleaseAsync(IdempotencyKeyStruct key, Fingerprint fingerprint)
-    {
-        try
-        {
-            await _store.ReleaseAsync(key, fingerprint, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to release in-flight idempotency entry after a failed request.");
         }
     }
 
@@ -250,12 +235,6 @@ public class IdempotencyService
             return;
         }
 
-        if (_options.CacheSuccessResponsesOnly && httpContext.Response.StatusCode >= 400)
-        {
-            await SafeReleaseAsync(key, fingerprint);
-            return;
-        }
-
         // Create Snapshot
         var snapshot = new IdempotencyResponseSnapshot
         {
@@ -269,7 +248,7 @@ public class IdempotencyService
         {
             if (!IsUnsafeHeader(h.Key))
             {
-                snapshot.Headers[h.Key] = h.Value.Where(x => x != null).Select(x => x!).ToArray();
+                snapshot.Headers[h.Key] = FilterHeaderValues(h.Value);
             }
         }
 
@@ -381,6 +360,42 @@ public class IdempotencyService
     private static bool IsUnsafeHeader(string key)
     {
         return !SafeReplayHeaders.Contains(key);
+    }
+
+    private static string[] FilterHeaderValues(Microsoft.Extensions.Primitives.StringValues values)
+    {
+        var count = values.Count;
+        if (count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        int nonNullCount = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (values[i] != null)
+            {
+                nonNullCount++;
+            }
+        }
+
+        if (nonNullCount == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var result = new string[nonNullCount];
+        int index = 0;
+        for (int i = 0; i < count; i++)
+        {
+            var val = values[i];
+            if (val != null)
+            {
+                result[index++] = val;
+            }
+        }
+
+        return result;
     }
 
     private Task WriteErrorResponseAsync(HttpContext httpContext, IdempotencyErrorContext error)
